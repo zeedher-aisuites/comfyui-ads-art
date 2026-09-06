@@ -1,153 +1,167 @@
-# Integración Gemini de Ads Art
+# Gemini Creative Intelligence Integration
 
-Fecha de verificación documental: 2026-09-06
+Fecha de implementación v2: 2026-09-06
 
-## Modelo y transporte
+## Contrato de producto
 
-Ads Art solicita exactamente `gemini-3.6-flash` mediante el SDK oficial de Google
-Gen AI para Python (`google-genai>=2.22.0,<3`). No usa el alias `latest`, no cambia de
-modelo si falla y no contiene fallback silencioso.
+Gemini analiza el comercial como evidencia y produce inteligencia transferible para una
+pieza original. No elige frames para copiarlos, no sustituye personajes/escenas y no
+instruye motion transfer.
 
-La documentación oficial del modelo declara entradas de texto, imagen, video y audio,
-salida de texto y soporte de structured outputs:
-
-- <https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash>
-- <https://ai.google.dev/gemini-api/docs/structured-output>
-- <https://ai.google.dev/gemini-api/docs/video-understanding>
-- <https://ai.google.dev/api/files>
-
-El módulo `ads_art_gemini.py` usa Files API para el video, una parte de imagen inline
-para la identidad aprobada y `response_json_schema` para la respuesta. Antes de subir
-medios consulta el descriptor exacto con la misma credencial y exige que el catálogo
-devuelva `models/gemini-3.6-flash` con la acción `generateContent`. El catálogo real de
-esta cuenta confirmó esa acción; Interactions API es una alternativa recomendada por
-Google, no un requisito exclusivo para este modelo.
-
-La inferencia tiene una sola llamada y no se reintenta. El workflow establece un solo
-intento de subida; el sondeo de procesamiento del archivo está acotado. El archivo
-remoto se elimina en best effort al finalizar.
-
-## Autenticación privada
-
-El proceso que inicia ComfyUI debe recibir `GEMINI_API_KEY` en su entorno. El nodo no
-lee claves desde el workflow, no las acepta como widget y nunca las guarda en prompts,
-respuestas, registros ni Git.
-
-Ejemplo para una sesión privada de PowerShell, introduciendo el valor sólo en esa
-terminal y sin guardarlo en el historial del proyecto:
-
-```powershell
-$env:GEMINI_API_KEY = Read-Host -MaskInput 'GEMINI_API_KEY'
-& .\venv_comfy\Scripts\python.exe .\main.py
+```text
+REFERENCE EVIDENCE
+  -> OBJECTIVE OBSERVATION
+  -> EVIDENCE-BACKED INTERPRETATION
+  -> ABSTRACT STRATEGY
+  -> TRANSFER / DO-NOT-COPY RULES
+  -> ORIGINAL ADAPTATION
+  -> ORIGINAL SHOT PLAN
 ```
 
-Instale el SDK en el mismo entorno de ComfyUI antes de activar una llamada:
+## Modelo, transporte y parámetros
 
-```powershell
-& .\venv_comfy\Scripts\python.exe -m pip install -r .\custom_nodes\ComfyUI-Ads-Art\requirements.txt
+- Modelo exacto: `gemini-3.6-flash`.
+- SDK: `google-genai>=2.22.0,<3`.
+- Método: `models.generate_content` / `generateContent`.
+- Structured output: JSON Schema estricto.
+- Thinking: `thinking_level=low`.
+- Salida: `max_output_tokens=8192`.
+- Video: Files API, modo estático, 2 FPS.
+- Audio: incluido dentro del MP4 para análisis; nunca se envía a Seedance.
+- Inferencia: una llamada, sin retry automático.
+- Subida: un intento; procesamiento acotado; eliminación remota best effort.
+
+No hay alias, fallback ni migración a Interactions API. El preflight autenticado del
+modelo ocurre antes de subir el archivo y exige el nombre exacto y soporte
+`generateContent`.
+
+## Ejecución automática segura
+
+`AdsArtGeminiCreativeIntelligence` no contiene `confirm_gemini_analysis`. La operación
+es automática sólo cuando se cumplen todos estos puntos:
+
+1. creative brief válido;
+2. video local legible;
+3. identidad central conectada y `identity_approved=true`;
+4. `GEMINI_API_KEY` disponible en el entorno privado;
+5. no existe caché completa para la huella;
+6. no existe un estado started/failed/unknown sin override manual.
+
+La caché se consulta antes de comprobar la clave o tocar la red. Una coincidencia
+devuelve `CACHE HIT`; una llamada nueva se identifica como `REMOTE ANALYSIS`. Si falta la
+clave y no hay caché, el nodo detiene indicando que no subió ningún medio.
+
+La ausencia del gate humano afecta sólo al análisis Gemini. Nano Banana Pro, Seedance y
+cualquier generación Higgsfield conservan confirmación explícita.
+
+## Huella semántica
+
+`analysis/creative_intelligence/cache/<sha256>.json` usa una serialización estable de:
+
+- SHA-256 y bytes del video;
+- SHA-256 de la identidad aprobada;
+- nombre, `identity_notes`, personalidad, arquetipo y restricciones del character;
+- modo/nombre de marca, product brief, audiencia, positioning, promise y brand world;
+- elementos requeridos/prohibidos y user constraints;
+- duración objetivo y rango de tomas;
+- modo de análisis;
+- conocimiento cinematográfico completo;
+- detector local y cortes;
+- modelo/configuración y versiones de prompt/schema.
+
+Cualquier cambio material invalida la huella. Los estados inciertos no se repiten
+automáticamente.
+
+## Schema maestro 2.0.0
+
+`ads_art_creative.py` define y valida ocho secciones independientes:
+
+1. `reference_observation`
+2. `reference_interpretation`
+3. `reference_strategy`
+4. `evidence`
+5. `transfer_rules`
+6. `original_adaptation`
+7. `original_shot_plan`
+8. `provenance`
+
+Los elementos de evidencia incluyen ID, timestamp, intervalo, candidatos, hecho
+observado y categorías respaldadas. La validación exige cobertura para hook, psicología,
+gramática visual, cámara, luz, edición, audio, reveal, memoria y progresión emocional.
+Cada frame extraído queda marcado:
+
+```text
+REFERENCE_EVIDENCE_ONLY_NOT_GENERATION_TARGET
 ```
 
-La preparación local funciona sin el SDK y sin clave. `confirm_gemini_analysis=false`
-garantiza que el nodo no intente red, catálogo, subida ni inferencia. Al confirmar, la
-consulta de disponibilidad ocurre primero y registra explícitamente que aún no se ha
-subido ningún medio.
+Cada toma original contiene duración, purpose, función psicológica/retención, acción,
+expresión, ambiente, composición, framing, cámara, perspectiva, movimiento, luz, color,
+producto, audio, continuidad, prompt Nano, dirección Seedance y tres campos de auditoría:
 
-## Nodo de análisis
+- `reference_principles_used`
+- `literal_reference_elements_avoided`
+- `differentiation_notes`
 
-**Ads Art — Gemini Commercial Analysis** recibe proyecto, video local, modelo fijo,
-modo `faithful_reference` o `creative_reinterpretation`, máximo de tomas, parámetros
-del detector local, aprobación explícita de identidad y una identidad opcional.
+La suma de las duraciones debe coincidir con el target y el número de tomas debe quedar
+entre los límites configurados. Expresiones de copia/remake/timestamp literal en campos
+de generación detienen el análisis.
 
-El prompt incluye los cuatro controles del proyecto, los 31 conceptos cinematográficos,
-la duración y cortes observados localmente, y estas reglas:
+`provenance` exige prefijos explícitos:
 
-- observación del comercial y propuesta creativa son objetos JSON distintos;
-- las instrucciones explícitas del usuario prevalecen;
-- datos de producto no definidos se registran como faltantes, no se inventan;
-- ningún frame queda aprobado por inferencia;
-- Nano Banana Pro permanece en `4:5` y `2k`;
-- Seedance sólo puede recibir imágenes aprobadas y texto, nunca el video ni audio fuente.
+- `USER_PROVIDED:`
+- `AI_PROPOSED:`
+- `USER_APPROVED:`
 
-Por toma, el esquema exige ID, inicio/fin, candidatos, descripción observada, motivo,
-objetivo, acción, encuadre, iluminación, IDs del catálogo, listas de conservar/eliminar/
-sustituir, prompt Nano Banana Pro, dirección Seedance e incertidumbres/contradicciones.
-La validación rechaza intervalos fuera de la duración y candidatos fuera de su toma.
+Los datos faltantes quedan en `unresolved_inputs`. Esta validación comprueba estructura,
+trazabilidad y cobertura declarada; no convierte una inferencia semántica en un hecho
+verificado por sí sola.
 
-Después de la respuesta, Ads Art comprueba candidatos cercanos (`±0.30 s`), evita los
-que queden a menos de `0.18 s` de un corte cuando hay alternativa, compara nitidez y
-extrae el frame elegido desde el archivo original. Todo resultado conserva
-`review.approved=false` hasta la acción del usuario.
+## Evidencia local
 
-## Edición, caché y reanudación
+La detección de cortes y extracción existente se reutiliza. Gemini devuelve candidatos
+dentro de intervalos observados; Ads Art prueba muestras cercanas, evita transiciones
+cuando existe alternativa y guarda el frame más estable bajo:
 
-**Ads Art — Gemini Shot Draft & Manual Overrides** transforma una toma en los campos
-del planificador. Un `manual_*` no vacío gana sobre Gemini y se guarda en
-`analysis/gemini/manual_overrides/<shot_id>.json`; una reejecución con widgets vacíos
-recupera esos cambios.
+```text
+frames/reference_evidence/<cache_key>/<evidence_id>.png
+```
 
-La huella de caché incluye SHA-256 del video y la identidad, cuatro controles,
-conocimiento, modelo exacto, versión del prompt, esquema, detector, límite de tomas y
-modo de adaptación. Una respuesta completa con la misma huella se reutiliza. Un estado
-`analysis_started`, `analysis_failed` o `analysis_unknown` bloquea repeticiones; sólo
-puede reintentarse tras revisión manual activando el override explícito.
+Estos archivos alimentan exclusivamente la visualización **03 — Reference Evidence**.
+No existe conexión desde ese puerto a Nano o Seedance.
 
-Antes de preparar Seedance, el usuario puede añadir observaciones sobre el frame
-recreado ya aprobado y ajustes posteriores. Esos campos se compilan en el prompt que
-describe lo que realmente aparece en la imagen, sin adjuntar el comercial ni su audio.
+## Generación original
 
-## Registros y costes
+`AdsArtPrepareOriginalKeyframe` usa character, brand/product brief, adaptación y toma
+original. Adjunta sólo `approved_ai_character`; nunca adjunta video o evidence frames.
+Mantiene `nano_banana_pro`, `4:5`, `2k`.
 
-El registro privado por análisis conserva identificador y versión del modelo, parámetros,
-versión del prompt, instrucciones de sistema, respuesta JSON, tiempos de subida/
-procesamiento/inferencia, uso de tokens reportado y resultado de validaciones locales.
+`AdsArtPrepareOriginalSeedanceShot` acepta únicamente un keyframe original aprobado,
+identidad aprobada y texto. Mantiene `seedance_2_5`, `omni_reference`; registra
+explícitamente que referencia visual, video y audio no fueron enviados.
 
-La estimación monetaria sólo se calcula después de recibir tokens reportados. Usa la
-tarifa Standard vigente de Gemini 3.6 Flash hasta el 31 de diciembre de 2026: USD 0.75
-por millón de tokens de entrada para todas las modalidades y USD 3.75 por millón de
-tokens de salida, incluido thinking. Aunque la tarifa de entrada es común, los tokens
-de audio se muestran separados de video. Si el proveedor omite `AUDIO`, la estimación
-marca y aplica el cálculo documental de 32 tokens de audio por segundo, restándolo del
-grupo de video informado. Se etiqueta como estimación;
-`observed_charge_usd` queda `null` porque la respuesta de generación no constituye una
-factura.
+Los dos `AdsArtSubmitJob` de la v2 están en bypass y
+`confirm_paid_submission=false`.
 
-Fuente: <https://ai.google.dev/gemini-api/docs/pricing>
+## Persistencia y compatibilidad
 
-## Preflight Dior preparado
+La v2 añade rutas nuevas y no toca:
 
-El workflow instalado referencia `J' ADORE - DIOR.mp4` y la copia de la identidad
-aprobada `Ads Art - Madame X approved.png`
-desde `ComfyUI/input`. Está limitado a tres tomas y conserva
-`confirm_gemini_analysis=false`.
+- `analysis/gemini/cache/` y `state/` históricos;
+- `analysis/commercial.json` de v1;
+- requests/jobs/results previos;
+- `GEMINI_TEST_REPORT_2026-09-06.md`;
+- `GEMINI_36_TEST_REPORT_2026-09-06.md`.
 
-El preflight local real midió 40.0 s, 1280 × 720, detectó 17 cortes y extrajo tres
-candidatos a 1.72 s, 20.60 s y 39.28 s. No ejecutó llamadas remotas; los tres siguen
-pendientes de revisión visual.
+La v1 se conserva como workflow histórico/deprecado. La instalación inicial de v2
+importa exactamente `identity_notes`, la imagen aprobada, project ID y controles previos,
+marcando estos últimos como contexto v1 subordinado al paradigma actual.
 
-## Intento histórico con Gemini 2.5
+## Costos y registros
 
-El 2026-09-06 se confirmó una sola ejecución sobre Dior. Files API aceptó y procesó el
-video, pero `generateContent` respondió `404 NOT_FOUND` e indicó que
-`gemini-2.5-flash` ya no estaba disponible para “new users”. Inferimos que esa política
-se aplicó a esta credencial; el error no reveló una clasificación de cuenta separada.
-No hubo fallback, reintento ni respuesta estructurada; el archivo remoto se eliminó. El workflow volvió a
-`confirm_gemini_analysis=false` y el marcador conservador `analysis_unknown` bloquea
-una repetición accidental.
+Los registros nuevos conservan modelo, configuración, prompt/schema version, respuesta,
+timings, uso y costo estimado. La tarifa sigue la configuración verificada de Gemini 3.6
+y `observed_charge_usd` permanece separado. Un costo calculado desde tokens no prueba un
+cargo de facturación.
 
-Consulte [`GEMINI_TEST_REPORT_2026-09-06.md`](GEMINI_TEST_REPORT_2026-09-06.md) para
-la cronología, tiempos, uso no reportado y estado final. Cambiar al modelo recomendado
-por la respuesta del proveedor requiere verificación documental y autorización expresa;
-Ads Art no sustituye el modelo silenciosamente.
-
-## Primera prueba completada con Gemini 3.6
-
-El mismo 2026-09-06, tras autorización expresa, el catálogo autenticado confirmó
-`models/gemini-3.6-flash`, `generateContent`, entrada máxima de 1,048,576 tokens y salida
-máxima de 65,536. Ads Art migró a `thinking_level=low`, eliminó el parámetro obsoleto
-`temperature`, limitó salida a 8,192 tokens y mantuvo procesamiento estático a 2 FPS.
-
-Una única inferencia sobre Dior terminó correctamente y devolvió tres tomas. Se
-registraron 14,303 tokens de entrada, 1,545 de salida y thinking no reportado. La
-estimación Standard fue USD 0.016521; no es un cargo observado. Consulte
-[`GEMINI_36_TEST_REPORT_2026-09-06.md`](GEMINI_36_TEST_REPORT_2026-09-06.md) para la
-evidencia completa.
+La implementación v2 se verificó con mocks/fixtures. No se realizó otra llamada remota
+a Gemini y no se ejecutó ninguna operación Higgsfield durante esta migración.

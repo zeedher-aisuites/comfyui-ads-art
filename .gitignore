@@ -51,6 +51,16 @@ montages/
 *.wav
 *.mp3
 *.m4a
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.gif
+
+# Private Ads Art runtime records and provider payloads
+analysis/
+reports/private/
+provider_payloads/
 
 # OS/editor noise
 .DS_Store

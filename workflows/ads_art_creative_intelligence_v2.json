@@ -1,0 +1,1882 @@
+{
+  "id": "ads-art-creative-intelligence-v2",
+  "revision": 1,
+  "last_node_id": 19,
+  "last_link_id": 23,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AdsArtCreativeBrief",
+      "pos": [
+        40,
+        80
+      ],
+      "size": [
+        470,
+        880
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "project_id",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "project_id"
+          }
+        },
+        {
+          "name": "character_name",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "character_name"
+          }
+        },
+        {
+          "name": "identity_notes",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "identity_notes"
+          }
+        },
+        {
+          "name": "character_personality",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "character_personality"
+          }
+        },
+        {
+          "name": "character_archetype",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "character_archetype"
+          }
+        },
+        {
+          "name": "character_style_constraints",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "character_style_constraints"
+          }
+        },
+        {
+          "name": "brand_creation_mode",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "brand_creation_mode"
+          }
+        },
+        {
+          "name": "fictional_brand_name",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "fictional_brand_name"
+          }
+        },
+        {
+          "name": "product_category",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "product_category"
+          }
+        },
+        {
+          "name": "product_description",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "product_description"
+          }
+        },
+        {
+          "name": "audience",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "audience"
+          }
+        },
+        {
+          "name": "positioning",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "positioning"
+          }
+        },
+        {
+          "name": "emotional_promise",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "emotional_promise"
+          }
+        },
+        {
+          "name": "visual_brand_world",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "visual_brand_world"
+          }
+        },
+        {
+          "name": "brand_constraints",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "brand_constraints"
+          }
+        },
+        {
+          "name": "required_elements",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "required_elements"
+          }
+        },
+        {
+          "name": "forbidden_elements",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "forbidden_elements"
+          }
+        },
+        {
+          "name": "user_constraints",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "user_constraints"
+          }
+        },
+        {
+          "name": "target_duration_seconds",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "target_duration_seconds"
+          }
+        },
+        {
+          "name": "min_original_shots",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "min_original_shots"
+          }
+        },
+        {
+          "name": "max_original_shots",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "max_original_shots"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "creative_project",
+          "type": "ADS_ART_CREATIVE_PROJECT",
+          "slot_index": 0,
+          "links": [
+            1,
+            13
+          ]
+        },
+        {
+          "name": "compatible_project",
+          "type": "ADS_ART_PROJECT",
+          "slot_index": 1,
+          "links": [
+            18,
+            23
+          ]
+        },
+        {
+          "name": "brief_status",
+          "type": "STRING",
+          "slot_index": 2,
+          "links": []
+        }
+      ],
+      "title": "00 — Project / Fictional Brand / AI Character",
+      "properties": {
+        "Node name for S&R": "AdsArtCreativeBrief"
+      },
+      "widgets_values": [
+        "ads_art_project_001",
+        "Madame X",
+        "",
+        "Quiet confidence, restrained sensuality and visual exclusivity, translated through the approved Madame X identity without copying the reference performer.",
+        "An enigmatic, self-possessed cultural icon.",
+        "Preserve the approved face, profile, long neck, dark auburn hair and black evening-wear identity cues.",
+        "ai_propose",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "Everything proposed must remain fictional and visibly differentiated from Dior and J'adore.",
+        "One approved AI character; an original hook; an original product/brand proposal clearly labeled AI PROPOSED.",
+        "Dior name or logo; J'adore bottle; original performer likeness; literal reference scenes, poses, blocking, composition, claims or packaging.",
+        "Transfer only abstract strategic, psychological, cinematic, editing and audio principles. Create a genuinely original advertisement.",
+        15,
+        4,
+        7
+      ]
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [
+        560,
+        80
+      ],
+      "size": [
+        330,
+        310
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "COMBO",
+          "widget": {
+            "name": "image"
+          },
+          "link": null
+        },
+        {
+          "name": "upload",
+          "type": "IMAGEUPLOAD",
+          "widget": {
+            "name": "upload"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            2,
+            15,
+            20
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "00b — Approved AI Character (Madame X)",
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "Ads Art - Madame X approved.png",
+        "image"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "AdsArtGeminiCreativeIntelligence",
+      "pos": [
+        980,
+        80
+      ],
+      "size": [
+        430,
+        610
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "creative_project",
+          "type": "ADS_ART_CREATIVE_PROJECT",
+          "link": 1
+        },
+        {
+          "name": "reference_video",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "reference_video"
+          }
+        },
+        {
+          "name": "model",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "model"
+          }
+        },
+        {
+          "name": "analysis_mode",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "analysis_mode"
+          }
+        },
+        {
+          "name": "scene_threshold",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "scene_threshold"
+          }
+        },
+        {
+          "name": "min_reference_shot_seconds",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "min_reference_shot_seconds"
+          }
+        },
+        {
+          "name": "local_detector_fps",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "local_detector_fps"
+          }
+        },
+        {
+          "name": "identity_approved",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "identity_approved"
+          }
+        },
+        {
+          "name": "reuse_matching_analysis",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "reuse_matching_analysis"
+          }
+        },
+        {
+          "name": "allow_retry_after_unknown",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "allow_retry_after_unknown"
+          }
+        },
+        {
+          "name": "upload_retries",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "upload_retries"
+          }
+        },
+        {
+          "name": "file_poll_attempts",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "file_poll_attempts"
+          }
+        },
+        {
+          "name": "approved_identity",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "creative_intelligence",
+          "type": "ADS_ART_CREATIVE_INTELLIGENCE",
+          "slot_index": 0,
+          "links": [
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            14
+          ]
+        },
+        {
+          "name": "reference_evidence_frames",
+          "type": "IMAGE",
+          "slot_index": 1,
+          "links": [
+            3
+          ]
+        },
+        {
+          "name": "creative_dna",
+          "type": "STRING",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "transfer_rules",
+          "type": "STRING",
+          "slot_index": 3,
+          "links": []
+        },
+        {
+          "name": "original_adaptation",
+          "type": "STRING",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "name": "original_shot_plan",
+          "type": "STRING",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "name": "unresolved_inputs",
+          "type": "STRING",
+          "slot_index": 6,
+          "links": []
+        }
+      ],
+      "title": "02 — Automatic Gemini Creative Intelligence",
+      "properties": {
+        "Node name for S&R": "AdsArtGeminiCreativeIntelligence"
+      },
+      "widgets_values": [
+        "J' ADORE - DIOR.mp4",
+        "gemini-3.6-flash",
+        "faithful_principles",
+        0.22,
+        0.5,
+        6.0,
+        true,
+        true,
+        false,
+        1,
+        60
+      ]
+    },
+    {
+      "id": 4,
+      "type": "PreviewImage",
+      "pos": [
+        1460,
+        80
+      ],
+      "size": [
+        380,
+        420
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "outputs": [],
+      "title": "03 — REFERENCE EVIDENCE ONLY — never generation targets",
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 5,
+      "type": "AdsArtCreativeIntelligenceViewer",
+      "pos": [
+        1900,
+        40
+      ],
+      "size": [
+        390,
+        240
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "creative_intelligence",
+          "type": "ADS_ART_CREATIVE_INTELLIGENCE",
+          "link": 4
+        },
+        {
+          "name": "section",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "section"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "inspection",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "03a — Creative DNA / Observation vs Interpretation",
+      "properties": {
+        "Node name for S&R": "AdsArtCreativeIntelligenceViewer"
+      },
+      "widgets_values": [
+        "creative_dna"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "AdsArtCreativeIntelligenceViewer",
+      "pos": [
+        2320,
+        40
+      ],
+      "size": [
+        390,
+        240
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "creative_intelligence",
+          "type": "ADS_ART_CREATIVE_INTELLIGENCE",
+          "link": 5
+        },
+        {
+          "name": "section",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "section"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "inspection",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "03b — Psychology / Hook / Retention",
+      "properties": {
+        "Node name for S&R": "AdsArtCreativeIntelligenceViewer"
+      },
+      "widgets_values": [
+        "psychology_and_hooks"
+      ]
+    },
+    {
+      "id": 7,
+      "type": "AdsArtCreativeIntelligenceViewer",
+      "pos": [
+        1900,
+        330
+      ],
+      "size": [
+        390,
+        240
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "creative_intelligence",
+          "type": "ADS_ART_CREATIVE_INTELLIGENCE",
+          "link": 6
+        },
+        {
+          "name": "section",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "section"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "inspection",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "03c — Visual / Camera / Lighting Grammar",
+      "properties": {
+        "Node name for S&R": "AdsArtCreativeIntelligenceViewer"
+      },
+      "widgets_values": [
+        "visual_camera_lighting"
+      ]
+    },
+    {
+      "id": 8,
+      "type": "AdsArtCreativeIntelligenceViewer",
+      "pos": [
+        2320,
+        330
+      ],
+      "size": [
+        390,
+        240
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "creative_intelligence",
+          "type": "ADS_ART_CREATIVE_INTELLIGENCE",
+          "link": 7
+        },
+        {
+          "name": "section",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "section"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "inspection",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "03d — Editing / Rhythm / Audio Strategy",
+      "properties": {
+        "Node name for S&R": "AdsArtCreativeIntelligenceViewer"
+      },
+      "widgets_values": [
+        "editing_and_audio"
+      ]
+    },
+    {
+      "id": 9,
+      "type": "AdsArtCreativeIntelligenceViewer",
+      "pos": [
+        1900,
+        650
+      ],
+      "size": [
+        390,
+        240
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "creative_intelligence",
+          "type": "ADS_ART_CREATIVE_INTELLIGENCE",
+          "link": 8
+        },
+        {
+          "name": "section",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "section"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "inspection",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "04 — Transfer Rules / Do Not Copy",
+      "properties": {
+        "Node name for S&R": "AdsArtCreativeIntelligenceViewer"
+      },
+      "widgets_values": [
+        "transfer_rules"
+      ]
+    },
+    {
+      "id": 10,
+      "type": "AdsArtCreativeIntelligenceViewer",
+      "pos": [
+        2320,
+        650
+      ],
+      "size": [
+        390,
+        240
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "creative_intelligence",
+          "type": "ADS_ART_CREATIVE_INTELLIGENCE",
+          "link": 9
+        },
+        {
+          "name": "section",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "section"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "inspection",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "04b — Original Adaptation Strategy",
+      "properties": {
+        "Node name for S&R": "AdsArtCreativeIntelligenceViewer"
+      },
+      "widgets_values": [
+        "original_adaptation"
+      ]
+    },
+    {
+      "id": 11,
+      "type": "AdsArtCreativeIntelligenceViewer",
+      "pos": [
+        1900,
+        940
+      ],
+      "size": [
+        390,
+        240
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "creative_intelligence",
+          "type": "ADS_ART_CREATIVE_INTELLIGENCE",
+          "link": 10
+        },
+        {
+          "name": "section",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "section"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "inspection",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "05 — Complete Original Shot Plan",
+      "properties": {
+        "Node name for S&R": "AdsArtCreativeIntelligenceViewer"
+      },
+      "widgets_values": [
+        "original_shot_plan"
+      ]
+    },
+    {
+      "id": 12,
+      "type": "AdsArtCreativeIntelligenceViewer",
+      "pos": [
+        2320,
+        940
+      ],
+      "size": [
+        390,
+        240
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "creative_intelligence",
+          "type": "ADS_ART_CREATIVE_INTELLIGENCE",
+          "link": 11
+        },
+        {
+          "name": "section",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "section"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "inspection",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        }
+      ],
+      "title": "05b — User / AI / Approved / Unresolved",
+      "properties": {
+        "Node name for S&R": "AdsArtCreativeIntelligenceViewer"
+      },
+      "widgets_values": [
+        "provenance_and_unresolved"
+      ]
+    },
+    {
+      "id": 13,
+      "type": "AdsArtOriginalShotDraft",
+      "pos": [
+        2760,
+        80
+      ],
+      "size": [
+        440,
+        540
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "creative_intelligence",
+          "type": "ADS_ART_CREATIVE_INTELLIGENCE",
+          "link": 12
+        },
+        {
+          "name": "shot_number",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "shot_number"
+          }
+        },
+        {
+          "name": "manual_character_action",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "manual_character_action"
+          }
+        },
+        {
+          "name": "manual_environment",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "manual_environment"
+          }
+        },
+        {
+          "name": "manual_composition",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "manual_composition"
+          }
+        },
+        {
+          "name": "manual_lighting",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "manual_lighting"
+          }
+        },
+        {
+          "name": "manual_nano_banana_prompt",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "manual_nano_banana_prompt"
+          }
+        },
+        {
+          "name": "manual_seedance_direction",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "manual_seedance_direction"
+          }
+        },
+        {
+          "name": "manual_differentiation_notes",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "manual_differentiation_notes"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "original_shot_draft",
+          "type": "ADS_ART_SHOT_DRAFT",
+          "slot_index": 0,
+          "links": [
+            16,
+            21
+          ]
+        },
+        {
+          "name": "nano_banana_prompt",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "name": "seedance_direction",
+          "type": "STRING",
+          "slot_index": 2,
+          "links": []
+        },
+        {
+          "name": "shot_report",
+          "type": "STRING",
+          "slot_index": 3,
+          "links": []
+        }
+      ],
+      "title": "05c — Editable Original Shot 01",
+      "properties": {
+        "Node name for S&R": "AdsArtOriginalShotDraft"
+      },
+      "widgets_values": [
+        1,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "id": 14,
+      "type": "AdsArtPrepareOriginalKeyframe",
+      "pos": [
+        3240,
+        80
+      ],
+      "size": [
+        430,
+        390
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "creative_project",
+          "type": "ADS_ART_CREATIVE_PROJECT",
+          "link": 13
+        },
+        {
+          "name": "creative_intelligence",
+          "type": "ADS_ART_CREATIVE_INTELLIGENCE",
+          "link": 14
+        },
+        {
+          "name": "approved_identity",
+          "type": "IMAGE",
+          "link": 15
+        },
+        {
+          "name": "shot_number",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "shot_number"
+          }
+        },
+        {
+          "name": "identity_approved",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "identity_approved"
+          }
+        },
+        {
+          "name": "manual_prompt_adjustments",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "manual_prompt_adjustments"
+          }
+        },
+        {
+          "name": "original_shot_draft",
+          "type": "ADS_ART_SHOT_DRAFT",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "original_keyframe_request",
+          "type": "ADS_ART_REQUEST",
+          "slot_index": 0,
+          "links": [
+            17
+          ]
+        },
+        {
+          "name": "request_preview",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "06 — Prepare ORIGINAL Nano Keyframe (local only)",
+      "properties": {
+        "Node name for S&R": "AdsArtPrepareOriginalKeyframe"
+      },
+      "widgets_values": [
+        1,
+        true,
+        ""
+      ]
+    },
+    {
+      "id": 15,
+      "type": "AdsArtSubmitJob",
+      "pos": [
+        3710,
+        80
+      ],
+      "size": [
+        370,
+        260
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "request",
+          "type": "ADS_ART_REQUEST",
+          "link": 17
+        },
+        {
+          "name": "confirm_paid_submission",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "confirm_paid_submission"
+          }
+        },
+        {
+          "name": "minimum_credits_after",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "minimum_credits_after"
+          }
+        },
+        {
+          "name": "upload_retries",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "upload_retries"
+          }
+        },
+        {
+          "name": "timeout_seconds",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "timeout_seconds"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "job",
+          "type": "ADS_ART_JOB",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "submission_status",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "06b — Nano Banana Pro submit — PAID / OFF",
+      "properties": {
+        "Node name for S&R": "AdsArtSubmitJob"
+      },
+      "widgets_values": [
+        false,
+        0.0,
+        2,
+        180
+      ]
+    },
+    {
+      "id": 16,
+      "type": "LoadImage",
+      "pos": [
+        3240,
+        560
+      ],
+      "size": [
+        330,
+        310
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "COMBO",
+          "widget": {
+            "name": "image"
+          },
+          "link": null
+        },
+        {
+          "name": "upload",
+          "type": "IMAGEUPLOAD",
+          "widget": {
+            "name": "upload"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "slot_index": 0,
+          "links": [
+            19
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "07 — Approved ORIGINAL keyframe — replace after review",
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "Ads Art - Madame X approved.png",
+        "image"
+      ]
+    },
+    {
+      "id": 17,
+      "type": "AdsArtPrepareOriginalSeedanceShot",
+      "pos": [
+        3710,
+        500
+      ],
+      "size": [
+        440,
+        700
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "project",
+          "type": "ADS_ART_PROJECT",
+          "link": 18
+        },
+        {
+          "name": "approved_original_keyframe",
+          "type": "IMAGE",
+          "link": 19
+        },
+        {
+          "name": "approved_identity",
+          "type": "IMAGE",
+          "link": 20
+        },
+        {
+          "name": "shot_id",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "shot_id"
+          }
+        },
+        {
+          "name": "keyframe_approved",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "keyframe_approved"
+          }
+        },
+        {
+          "name": "identity_approved",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "identity_approved"
+          }
+        },
+        {
+          "name": "performance",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "performance"
+          }
+        },
+        {
+          "name": "camera_trajectory",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "camera_trajectory"
+          }
+        },
+        {
+          "name": "rhythm",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "rhythm"
+          }
+        },
+        {
+          "name": "continuity",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "continuity"
+          }
+        },
+        {
+          "name": "approved_keyframe_observations",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "approved_keyframe_observations"
+          }
+        },
+        {
+          "name": "seedance_prompt_adjustments",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "seedance_prompt_adjustments"
+          }
+        },
+        {
+          "name": "generated_duration_seconds",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "generated_duration_seconds"
+          }
+        },
+        {
+          "name": "final_edit_duration_seconds",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "final_edit_duration_seconds"
+          }
+        },
+        {
+          "name": "video_aspect_ratio",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "video_aspect_ratio"
+          }
+        },
+        {
+          "name": "approve_aspect_adaptation",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "approve_aspect_adaptation"
+          }
+        },
+        {
+          "name": "resolution",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "resolution"
+          }
+        },
+        {
+          "name": "generate_native_audio",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "generate_native_audio"
+          }
+        },
+        {
+          "name": "bitrate_mode",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "bitrate_mode"
+          }
+        },
+        {
+          "name": "approved_end_keyframe",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "original_shot_draft",
+          "type": "ADS_ART_SHOT_DRAFT",
+          "link": 21
+        }
+      ],
+      "outputs": [
+        {
+          "name": "seedance_request",
+          "type": "ADS_ART_REQUEST",
+          "slot_index": 0,
+          "links": [
+            22
+          ]
+        },
+        {
+          "name": "request_preview",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "08 — Prepare Seedance from approved ORIGINAL keyframe",
+      "properties": {
+        "Node name for S&R": "AdsArtPrepareOriginalSeedanceShot"
+      },
+      "widgets_values": [
+        "shot_01",
+        false,
+        true,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        5,
+        5.0,
+        "auto",
+        false,
+        "1080p",
+        false,
+        "standard"
+      ]
+    },
+    {
+      "id": 18,
+      "type": "AdsArtSubmitJob",
+      "pos": [
+        4190,
+        500
+      ],
+      "size": [
+        370,
+        260
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "request",
+          "type": "ADS_ART_REQUEST",
+          "link": 22
+        },
+        {
+          "name": "confirm_paid_submission",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "confirm_paid_submission"
+          }
+        },
+        {
+          "name": "minimum_credits_after",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "minimum_credits_after"
+          }
+        },
+        {
+          "name": "upload_retries",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "upload_retries"
+          }
+        },
+        {
+          "name": "timeout_seconds",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "timeout_seconds"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "job",
+          "type": "ADS_ART_JOB",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "submission_status",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "08b — Seedance submit — PAID / OFF",
+      "properties": {
+        "Node name for S&R": "AdsArtSubmitJob"
+      },
+      "widgets_values": [
+        false,
+        0.0,
+        2,
+        180
+      ]
+    },
+    {
+      "id": 19,
+      "type": "AdsArtAssembleClips",
+      "pos": [
+        4190,
+        900
+      ],
+      "size": [
+        430,
+        420
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "project",
+          "type": "ADS_ART_PROJECT",
+          "link": 23
+        },
+        {
+          "name": "clip_paths",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "clip_paths"
+          }
+        },
+        {
+          "name": "original_commercial_path",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "original_commercial_path"
+          }
+        },
+        {
+          "name": "audio_treatment",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "audio_treatment"
+          }
+        },
+        {
+          "name": "external_audio_path",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "external_audio_path"
+          }
+        },
+        {
+          "name": "output_filename",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "output_filename"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "video_path",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": []
+        },
+        {
+          "name": "montage_report",
+          "type": "STRING",
+          "slot_index": 1,
+          "links": []
+        }
+      ],
+      "title": "09 — Assembly / Final (enable after accepted clips)",
+      "properties": {
+        "Node name for S&R": "AdsArtAssembleClips"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "original",
+        "",
+        "ads_art_original_final.mp4"
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      0,
+      "ADS_ART_CREATIVE_PROJECT"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      12,
+      "IMAGE"
+    ],
+    [
+      3,
+      3,
+      1,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      3,
+      0,
+      5,
+      0,
+      "ADS_ART_CREATIVE_INTELLIGENCE"
+    ],
+    [
+      5,
+      3,
+      0,
+      6,
+      0,
+      "ADS_ART_CREATIVE_INTELLIGENCE"
+    ],
+    [
+      6,
+      3,
+      0,
+      7,
+      0,
+      "ADS_ART_CREATIVE_INTELLIGENCE"
+    ],
+    [
+      7,
+      3,
+      0,
+      8,
+      0,
+      "ADS_ART_CREATIVE_INTELLIGENCE"
+    ],
+    [
+      8,
+      3,
+      0,
+      9,
+      0,
+      "ADS_ART_CREATIVE_INTELLIGENCE"
+    ],
+    [
+      9,
+      3,
+      0,
+      10,
+      0,
+      "ADS_ART_CREATIVE_INTELLIGENCE"
+    ],
+    [
+      10,
+      3,
+      0,
+      11,
+      0,
+      "ADS_ART_CREATIVE_INTELLIGENCE"
+    ],
+    [
+      11,
+      3,
+      0,
+      12,
+      0,
+      "ADS_ART_CREATIVE_INTELLIGENCE"
+    ],
+    [
+      12,
+      3,
+      0,
+      13,
+      0,
+      "ADS_ART_CREATIVE_INTELLIGENCE"
+    ],
+    [
+      13,
+      1,
+      0,
+      14,
+      0,
+      "ADS_ART_CREATIVE_PROJECT"
+    ],
+    [
+      14,
+      3,
+      0,
+      14,
+      1,
+      "ADS_ART_CREATIVE_INTELLIGENCE"
+    ],
+    [
+      15,
+      2,
+      0,
+      14,
+      2,
+      "IMAGE"
+    ],
+    [
+      16,
+      13,
+      0,
+      14,
+      6,
+      "ADS_ART_SHOT_DRAFT"
+    ],
+    [
+      17,
+      14,
+      0,
+      15,
+      0,
+      "ADS_ART_REQUEST"
+    ],
+    [
+      18,
+      1,
+      1,
+      17,
+      0,
+      "ADS_ART_PROJECT"
+    ],
+    [
+      19,
+      16,
+      0,
+      17,
+      1,
+      "IMAGE"
+    ],
+    [
+      20,
+      2,
+      0,
+      17,
+      2,
+      "IMAGE"
+    ],
+    [
+      21,
+      13,
+      0,
+      17,
+      20,
+      "ADS_ART_SHOT_DRAFT"
+    ],
+    [
+      22,
+      17,
+      0,
+      18,
+      0,
+      "ADS_ART_REQUEST"
+    ],
+    [
+      23,
+      1,
+      1,
+      19,
+      0,
+      "ADS_ART_PROJECT"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "00 — PROJECT / FICTIONAL BRAND / AI CHARACTER",
+      "bounding": [
+        10,
+        20,
+        900,
+        980
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "01–02 — REFERENCE COMMERCIAL → AUTOMATIC CREATIVE INTELLIGENCE",
+      "bounding": [
+        930,
+        20,
+        930,
+        760
+      ],
+      "color": "#6b4c9a",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "03 — REFERENCE EVIDENCE (NOT GENERATION TARGETS)",
+      "bounding": [
+        1410,
+        20,
+        430,
+        520
+      ],
+      "color": "#9b6b3f",
+      "font_size": 22,
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "03–05 — INSPECT / TRANSFER / ORIGINAL AD PLAN",
+      "bounding": [
+        1870,
+        0,
+        880,
+        1230
+      ],
+      "color": "#477a58",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "05–06 — ORIGINAL SHOT → NANO KEYFRAME",
+      "bounding": [
+        2730,
+        20,
+        1380,
+        1050
+      ],
+      "color": "#8b5e3c",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "07–09 — HUMAN APPROVAL → SEEDANCE → ASSEMBLY",
+      "bounding": [
+        3210,
+        470,
+        1400,
+        940
+      ],
+      "color": "#6a506e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.72,
+      "offset": [
+        80,
+        80
+      ]
+    }
+  },
+  "version": 0.4
+}

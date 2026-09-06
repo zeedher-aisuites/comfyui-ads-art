@@ -87,11 +87,14 @@ class AdsArtTests(unittest.TestCase):
         return video_path
 
     def test_node_package_imports(self):
-        self.assertEqual(len(PACKAGE.NODE_CLASS_MAPPINGS), 14)
+        self.assertEqual(len(PACKAGE.NODE_CLASS_MAPPINGS), 20)
         self.assertIn("AdsArtPrepareVideoShot", PACKAGE.NODE_CLASS_MAPPINGS)
         self.assertIn("AdsArtRecoverJob", PACKAGE.NODE_CLASS_MAPPINGS)
         self.assertIn("AdsArtGeminiAnalyzeCommercial", PACKAGE.NODE_CLASS_MAPPINGS)
         self.assertIn("AdsArtGeminiShotDraft", PACKAGE.NODE_CLASS_MAPPINGS)
+        self.assertIn("AdsArtCreativeBrief", PACKAGE.NODE_CLASS_MAPPINGS)
+        self.assertIn("AdsArtGeminiCreativeIntelligence", PACKAGE.NODE_CLASS_MAPPINGS)
+        self.assertIn("AdsArtPrepareOriginalKeyframe", PACKAGE.NODE_CLASS_MAPPINGS)
 
     def test_knowledge_base_is_the_supplied_catalog(self):
         knowledge = CORE.load_knowledge()

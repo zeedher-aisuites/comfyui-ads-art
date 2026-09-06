@@ -1,174 +1,170 @@
-# Ads Art — ComfyUI + Gemini + Higgsfield
+# Ads Art — Reference-Driven Advertising Intelligence
 
-Primera versión funcional de un flujo por tomas para recrear un comercial con una identidad hiperrealista derivada de una obra de arte. ComfyUI controla preparación, revisión, persistencia, envío, consulta y montaje; Higgsfield sólo recibe solicitudes cuando el usuario activa una confirmación explícita.
+Ads Art estudia un comercial como referencia estratégica y cinematográfica, abstrae por
+qué funciona y diseña una pieza publicitaria original para un AI character y una marca o
+producto nuevos. El referente aporta evidencia; nunca es un blueprint, un objetivo de
+generación ni una fuente de motion transfer.
 
-## Entorno verificado
-
-- La carpeta padre de `custom_nodes/` es la raíz ejecutable de ComfyUI.
-- Instale este repositorio como `custom_nodes/ComfyUI-Ads-Art` sin mover el resto de ComfyUI.
-- ComfyUI: 0.21.1, Python 3.14.5, PyTorch 2.11.0+cu128
-- Dependencias activas cargadas desde `venv_comfy\Lib\site-packages`
-- Higgsfield CLI oficial: 1.1.23, instalado en `%LOCALAPPDATA%\hermes\node`
-- El CLI está autenticado. Ads Art nunca solicita ni registra el token.
-- PyAV está disponible para metadatos, detección visual de tomas y extracción de frames.
-- El análisis semántico opcional usa el SDK oficial Google Gen AI y el identificador
-  exacto `gemini-3.6-flash`. La preparación local no requiere clave ni llamada remota.
-
-`ffmpeg` no estaba en `PATH` durante la instalación. El nodo de montaje también busca la copia de CapCut detectada y admite una ruta explícita mediante `ADS_ART_FFMPEG`. El resto del sistema no depende de `ffmpeg`.
-
-## Análisis Gemini
-
-**Gemini Commercial Analysis** recibe el video, la identidad aprobada opcional, los
-cuatro controles del proyecto, los 31 conceptos cinematográficos, el máximo de tomas y
-el modo de adaptación. Devuelve JSON estructurado con observaciones separadas de las
-propuestas creativas. Los timestamps se validan contra la duración real y el detector
-local de cortes; Ads Art examina frames cercanos para evitar transiciones y preferir
-muestras nítidas.
-
-El modelo está fijado a `gemini-3.6-flash`; no existe alias ni fallback. Antes de subir
-medios, el nodo consulta el descriptor del modelo con la misma credencial y exige que
-anuncie `generateContent`. La llamada usa video estático a 2 FPS,
-`thinking_level=low`, structured output y `max_output_tokens=8192`. La clave sólo se
-toma de `GEMINI_API_KEY` en el entorno privado que inicia ComfyUI. Consulte
-[`GEMINI_INTEGRATION.md`](GEMINI_INTEGRATION.md) para esquema, caché, costes,
-configuración y evidencia documental.
-
-## Transporte real de Higgsfield
-
-Esta versión **usa el CLI oficial de Higgsfield; no contiene un cliente MCP**. `ads_art_core.py` ejecuta directamente `node.exe` con el script instalado de `@higgsfield/cli`, evitando el shim `.cmd` cuando está disponible.
-
-- Autenticación: `account status` comprueba la sesión local y devuelve saldo/plan sin conservar el correo ni solicitar el token.
-- Catálogo: `model get nano_banana_pro` y `model get seedance_2_5`; se repite justo antes de enviar.
-- Preparación: completamente local; compila prompts, valida aprobaciones/medios y escribe el request. No llama a Higgsfield.
-- Envío: `upload create`, `generate cost` y una sola llamada `generate create`, únicamente con `confirm_paid_submission=true`.
-- Consulta: `generate get <job_id>` una vez por ejecución de **Poll Job**.
-- Descarga: Python descarga las URLs finales devueltas por el job a `user/ads_art/projects/<project_id>/results/`.
-
-Las herramientas MCP visibles para el agente se usaron sólo para contrastar el catálogo y la autenticación durante desarrollo; los nodos de ComfyUI no pueden invocarlas. Para cumplir el requisito MCP original falta una interfaz MCP local documentada (transporte, autenticación y contrato de herramientas) que ComfyUI pueda usar. Cuando exista, podrá añadirse otro transporte conservando el esquema y las validaciones actuales.
-
-## Workflow versionado e instalado
-
-- Copia portable y versionada: `workflows/ads_art_prepare_v1.json`.
-- Copia instalada de ComfyUI: `../../user/default/workflows/Ads Art/ads_art_prepare_v1.json`.
-
-La copia instalada queda fuera de este repositorio. Para actualizarla desde la versión
-controlada sin perder `identity_notes`, IDs de jobs ni otros widgets personales, ejecute
-desde la raíz de este repositorio:
-
-```powershell
-& ..\..\venv_comfy\Scripts\python.exe .\scripts\sync_workflow.py
+```text
+REFERENCE COMMERCIAL + APPROVED AI CHARACTER + BRAND/PRODUCT BRIEF
+                              + USER CONSTRAINTS + CINEMATIC KNOWLEDGE
+                                           |
+                                    LOCAL PREFLIGHT
+                                           |
+                       AUTOMATIC GEMINI CREATIVE INTELLIGENCE
+                                           |
+          OBSERVATION -> INTERPRETATION -> STRATEGY -> TRANSFER RULES
+                                           |
+                         ORIGINAL ADAPTATION + ORIGINAL SHOT PLAN
+                                           |
+                        NANO PROMPTS + SEEDANCE DIRECTIONS
+                                           |
+                              HUMAN / PAID GENERATION GATES
 ```
 
-El sincronizador conserva nodos instalados adicionales y fuerza de nuevo a `false`
-todo envío de pago y toda confirmación Gemini.
+## Workflow recomendado
 
-## Uso breve
+- Portable: `workflows/ads_art_creative_intelligence_v2.json`.
+- Instalado: `user/default/workflows/Ads Art/ads_art_creative_intelligence_v2.json`.
+- Compatibilidad histórica: `ads_art_prepare_v1.json` permanece instalado y versionado,
+  pero no debe usarse como arquitectura para proyectos nuevos.
 
-1. Reinicie ComfyUI y cargue `workflows/ads_art_prepare_v1.json`. El workflow abre con análisis/revisión activos y las fases posteriores desactivadas; habilite sólo la fase que esté revisando para respetar las aprobaciones entre etapas.
-2. En **Project & Conflicts**, introduzca los cuatro controles. Corrija cualquier conflicto con nivel `ERROR`; las sugerencias creativas nunca anulan restricciones explícitas.
-3. En **Gemini Commercial Analysis**, indique una ruta absoluta o un archivo de
-   `input`, elija el modo y limite tomas. Con `confirm_gemini_analysis=false`, ejecute el
-   preflight local y revise cortes/candidatos. Configure `GEMINI_API_KEY` fuera del
-   workflow y active la confirmación sólo cuando decida hacer el análisis remoto.
-4. En **Gemini Shot Draft & Manual Overrides**, seleccione una toma. Los campos
-   `manual_*` no vacíos prevalecen y sobreviven a reanálisis; el frame sigue sin aprobar.
-5. Cargue la obra y ejecute **Prepare Identity**. Revise la solicitud. Sólo active `confirm_paid_submission` en **Submit Job** cuando decida generar.
-6. Recupere el registro mediante **Recover Job Record** y consulte el mismo job con **Poll Job**. Cargue y apruebe visualmente la identidad descargada.
-7. Use **Plan & Prepare Frame** por toma. Un borrador Gemini conectado llena valores
-   vacíos; cualquier texto manual no vacío gana. La solicitud permanece bloqueada hasta
-   aprobar identidad y frame fuente.
-8. Apruebe cada frame recreado y use **Prepare Seedance Shot**. Describa lo que
-   realmente aparece en él en `approved_frame_observations` y ajuste el movimiento en
-   `seedance_prompt_adjustments`. `auto` evita asumir que 4:5 sea formato de video.
-9. Genere y consulte cada toma por separado. Las tomas aceptadas conservan su job y no se repiten.
-10. Pase las rutas de clips seleccionados, una por línea, a **Assemble Clips**. `original` reutiliza el audio del comercial sólo en el montaje local.
+La v2 organiza el canvas en estas fases:
 
-## Garantías aplicadas en código
+1. **00 — Project / Fictional Brand / AI Character**
+2. **01–02 — Reference Commercial / Automatic Creative Intelligence**
+3. **03 — Reference Evidence — NOT GENERATION TARGETS**
+4. **04 — Transfer Rules / Original Adaptation**
+5. **05 — Original Shot Plan**
+6. **06 — Original Nano Keyframes**
+7. **07 — Approved Original Keyframes**
+8. **08 — Seedance Original Shots**
+9. **09 — Assembly / Final**
 
-- Imágenes: exactamente `nano_banana_pro`, `4:5`, `2k`.
-- Video: exactamente `seedance_2_5`, modo `omni_reference`.
-- Seedance: sólo archivos de imagen con roles `image`, `start_image` y `end_image`.
-- `video`, `audio`, `video_edit`, `video_extension` y formato de video `4:5` se bloquean antes del envío.
-- `positive`, `restrictive`, `negative` y `creative` son controles internos compilados dentro del prompt. Nunca se inventa un parámetro nativo `negative_prompt`.
-- El catálogo local se consulta de nuevo justo antes de un envío.
-- El envío se realiza una sola vez. Un timeout queda como `submission_unknown` y no se reintenta automáticamente.
-- Uploads y consultas tienen reintentos limitados; generación no.
-- Los prompts no se imprimen en logs y los secretos no se guardan en código ni workflows.
-- Gemini usa una huella del video, identidad, controles y configuración para reutilizar
-  análisis idénticos. Una inferencia incierta no se repite automáticamente.
-- Toda respuesta Gemini se valida por esquema y timestamps; ninguna aprobación visual
-  se infiere automáticamente.
+## Inputs centrales
 
-## Envío, recuperación y reanudación
+**Ads Art v2 — Project / Brand / Character** separa:
 
-Cada ejecución de **Submit Job** guarda primero `jobs/<request_id>.json`. Si ya contiene `job_id`, devolverá ese registro y no creará otro. Si el envío quedó como `submission_unknown`, la misma request queda bloqueada para impedir un reintento potencialmente duplicado.
+- AI character, `identity_notes`, personalidad, arquetipo y restricciones visuales;
+- `fictional_brand_name`, modo `user_defined` o autorización explícita `ai_propose`;
+- categoría y descripción del producto;
+- audiencia, positioning, emotional promise y visual brand world;
+- brand constraints, elementos obligatorios/prohibidos y restricciones del usuario;
+- duración objetivo entre 5 y 40 segundos y rango de 1 a 16 tomas originales.
 
-Para recuperar un trabajo:
+`ai_propose` permite proponer una marca/producto ficticios y exige etiquetarlos
+`AI_PROPOSED`. En `user_defined`, la marca debe venir del usuario. El resultado distingue
+`USER_PROVIDED`, `AI_PROPOSED`, `USER_APPROVED` y datos sin resolver.
 
-1. Copie `request_id` y `job_id` de la salida del nodo o del JSON en `user/ads_art/projects/<project_id>/jobs/`.
-2. Habilite **Recover Job Record** y **Poll Job**, que vienen desactivados.
-3. En **Recover Job Record**, use `request_id` para cargar el registro persistido. Si sólo conoce el job ID, deje `request_id` vacío y escriba `job_id`, `shot_id` y `stage`.
-4. Ejecute **Poll Job**. Cada ejecución hace una consulta no bloqueante. Repítala hasta `completed`, `failed`, `canceled`, `nsfw` o `ip_detected`.
-5. Con `download_completed=true`, un estado `completed` descarga automáticamente los archivos y devuelve sus rutas.
-6. Para resultados de imagen, habilite **Load Image Result** y **Preview Image**. Para video, use la ruta `.mp4` devuelta en el montaje.
+## Gemini automático y caché
 
-Si no se obtuvo job ID por un timeout, ejecute `higgsfield generate list`, identifique el trabajo sin reenviarlo y registre ese ID en **Recover Job Record**.
+La v2 mantiene exactamente:
 
-Pasos exactos para la primera generación real de identidad:
+- `gemini-3.6-flash`, sin alias ni fallback;
+- Google Gen AI SDK + `generateContent`;
+- structured output con JSON Schema y validación local;
+- `thinking_level=low`, `max_output_tokens=8192` y video estático a 2 FPS;
+- audio incluido en el MP4;
+- preflight de disponibilidad antes de subir medios;
+- una inferencia, un intento de subida, sin reintento automático de inferencia;
+- limpieza best effort del archivo remoto y bloqueo de estados inciertos;
+- `GEMINI_API_KEY` exclusivamente desde el entorno privado.
 
-1. Complete proyecto, análisis y revisión del frame; corrija todos los errores de contradicción.
-2. Habilite **Prepare Identity**, cargue la obra y revise el prompt preparado.
-3. Habilite su **Submit Job**, deje `minimum_credits_after` en el límite deseado y cambie `confirm_paid_submission` a `true` sólo para esa ejecución.
-4. Anote `request_id`/`job_id` del registro y vuelva inmediatamente `confirm_paid_submission` a `false`.
-5. Recupere y consulte el job con los pasos anteriores hasta `completed`; no vuelva a ejecutar una solicitud nueva para intentar consultarlo.
-6. Revise visualmente la imagen descargada. Sólo después cargue esa imagen como **Approved generated identity** y active `identity_approved` para preparar el primer frame.
-7. Repita el mismo ciclo para el frame y después para Seedance. El video original y su audio nunca se envían a Seedance.
+No existe `confirm_gemini_analysis` en el nodo v2. Al ejecutar:
 
-## Persistencia
+1. valida brief, identidad y video;
+2. calcula una huella semántica;
+3. si existe respuesta completa, devuelve **CACHE HIT** sin red;
+4. si no existe y falta la clave, detiene con error antes de subir;
+5. si no existe, la clave está disponible y los inputs son válidos, ejecuta
+   automáticamente una sola inferencia y muestra **REMOTE ANALYSIS**.
 
-Cada proyecto se guarda en `user/ads_art/projects/<project_id>/`:
+La huella incluye video, identidad, `identity_notes`, character/brand/product brief,
+restricciones, duración/rango de tomas, modo, conocimiento cinematográfico, detector,
+modelo, configuración y versiones de prompt/schema.
 
-- `project.json`: controles y conflictos.
-- `analysis/commercial.json`: datos verificados, interpretaciones manuales y tomas.
-- `analysis/gemini/`: preflights, respuestas validadas, huellas y overrides manuales.
-- `frames/`: frames originales/revisados.
-- `references/`: identidad y referencias por toma.
-- `shots/<shot_id>/plan.json`: plan editorial explícito.
-- `requests/`: prompt, parámetros, referencias y aprobaciones.
-- `jobs/`: job ID, estado, coste estimado y resultados.
-- `results/` y `montages/`: archivos recuperados y registros de montaje.
+## Salida maestra
 
-## Separación de transportes
+El schema `2.0.0` separa obligatoriamente:
 
-Gemini se integra mediante el SDK oficial Google Gen AI. Higgsfield continúa usando su
-CLI oficial y no existe un puente MCP dentro de ComfyUI. Son transportes independientes:
-Gemini prepara el plan; los envíos de generación siguen sujetos a las protecciones y
-confirmaciones de Higgsfield descritas arriba.
+- `reference_observation`: hechos visuales, de edición, audio y producto/marca;
+- `reference_interpretation`: concepto, tesis, hook, deseo, arquetipo, psicología,
+  retención y progresión emocional;
+- `reference_strategy`: gramática visual, cámara, luz, ritmo, audio, reveal y memoria;
+- `evidence`: timestamps e intervalos válidos que respaldan categorías concretas;
+- `transfer_rules`: principios transferibles, elementos literales prohibidos y riesgos;
+- `original_adaptation`: nueva tesis, hook, rol, mundo, arco y reglas;
+- `original_shot_plan`: tomas nuevas, duración, función, acción, composición, cámara,
+  audio, prompts y auditoría de diferenciación;
+- `provenance`: aportado por usuario, propuesto por IA, aprobado y no resuelto.
 
-## Archivos
+La validación comprueba timestamps, cobertura de evidencia, campos obligatorios, suma de
+duraciones, rango de tomas y expresiones explícitas de copia literal. Un fallo detiene el
+workflow; no inicia un retry correctivo oculto.
 
-- `ads_art_core.py`: políticas, persistencia, CLI y protección contra duplicados.
-- `ads_art_gemini.py`: transporte Google Gen AI, esquema, validación, uso y coste estimado.
-- `ads_art_nodes.py`: 14 nodos ComfyUI, incluidos análisis Gemini y borrador editable.
-- `knowledge/ads_art_camera_knowledge_v1.json`: catálogo editorial adjunto, 31 conceptos.
-- `knowledge/higgsfield_catalog_snapshot_v1.json`: evidencia offline; no sustituye la consulta vigente.
-- `workflows/ads_art_prepare_v1.json`: workflow importable de preparación, con envíos desactivados.
-- `scripts/sync_workflow.py`: actualiza la copia instalada conservando widgets personales.
-- `tests/test_ads_art.py`: restricciones, Gemini local, conocimiento y conexiones del workflow.
+## Nano Banana Pro y Seedance
 
-## Estado de las pruebas remotas
+**Prepare Original Nano Keyframe** genera localmente una solicitud para una toma nueva.
+Adjunta sólo el AI character aprobado. No adjunta el comercial ni sus frames de evidencia.
 
-El intento histórico autorizado con `gemini-2.5-flash` permanece separado en
-[`GEMINI_TEST_REPORT_2026-09-06.md`](GEMINI_TEST_REPORT_2026-09-06.md): Files API aceptó
-el video, pero la inferencia respondió `404 NOT_FOUND`; no hubo reintento.
+- Modelo exacto: `nano_banana_pro`.
+- Formato: `4:5`.
+- Resolución: `2k`.
+- El nodo de envío Higgsfield permanece desactivado y requiere
+  `confirm_paid_submission=true` para gastar.
 
-La migración explícitamente autorizada a `gemini-3.6-flash` se verificó con la misma
-credencial y una única ejecución mediante el nodo de ComfyUI. El análisis terminó,
-propuso tres tomas y extrajo tres frames; todos siguen `approved=false`. El proveedor
-reportó 14,303 tokens de entrada, 1,545 tokens de salida y no desglosó thinking. La
-estimación Standard basada en ese uso fue USD 0.016521; no es un cargo observado. El
-informe reproducible está en
-[`GEMINI_36_TEST_REPORT_2026-09-06.md`](GEMINI_36_TEST_REPORT_2026-09-06.md).
+**Prepare Seedance from Original Keyframe** anima exclusivamente un keyframe original
+aprobado con texto y referencias de imagen:
 
-No se lanzó ninguna generación Higgsfield. El montaje sigue necesitando clips
-resultantes reales y un `ffmpeg` compatible.
+- `seedance_2_5`, modo `omni_reference`;
+- ningún video/audio/frame de evidencia del referente;
+- dirección derivada de función de toma, actuación, cámara, ritmo y objetivo emocional;
+- aprobación visual y envío pagado siempre humanos.
+
+## Persistencia y compatibilidad
+
+La v2 escribe sin tocar los históricos existentes:
+
+```text
+user/ads_art/projects/<project_id>/
+  creative_project.json
+  analysis/reference/latest.json
+  analysis/creative_intelligence/master.json
+  analysis/creative_intelligence/cache/<fingerprint>.json
+  analysis/creative_intelligence/state/<fingerprint>.json
+  analysis/creative_intelligence/manual_overrides/<shot_id>.json
+  adaptation/original_adaptation.json
+  frames/reference_evidence/<fingerprint>/
+  shots/original_plan.json
+  requests/ jobs/ results/ montages/
+```
+
+Los registros y cachés Gemini 2.5/3.6 anteriores no se migran ni sobrescriben. El
+sincronizador v2 importa las `identity_notes`, identidad aprobada y controles v1 cuando
+se instala por primera vez, y luego preserva los widgets v2 por nombre.
+
+```powershell
+& ..\..\venv_comfy\Scripts\python.exe .\scripts\build_creative_workflow_v2.py
+& ..\..\venv_comfy\Scripts\python.exe .\scripts\sync_creative_workflow_v2.py
+```
+
+## Transporte Higgsfield
+
+Los nodos de generación continúan usando el CLI oficial de Higgsfield; no existe un
+cliente MCP dentro de ComfyUI. Preparación, validación y persistencia son locales. Sólo
+**Submit Job (Explicit)** puede ejecutar upload/cost/create y únicamente tras
+confirmación explícita. Un envío incierto no se repite.
+
+## Autenticación y pruebas
+
+Defina `GEMINI_API_KEY` sólo en el proceso privado que inicia ComfyUI. Nunca la escriba
+en el workflow, Git o logs.
+
+```powershell
+& ..\..\venv_comfy\Scripts\python.exe -m unittest discover -s tests -p 'test_*.py'
+```
+
+La migración v2 se validó localmente con fixtures/mocks y sin otra llamada Gemini, sin
+uploads Higgsfield y sin generaciones de pago. Los informes remotos históricos se
+conservan en `GEMINI_TEST_REPORT_2026-09-06.md` y
+`GEMINI_36_TEST_REPORT_2026-09-06.md`.
