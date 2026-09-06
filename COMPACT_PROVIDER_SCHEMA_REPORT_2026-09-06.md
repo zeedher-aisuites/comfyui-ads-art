@@ -200,3 +200,60 @@ detailed timings were never persisted by the old code and remain explicitly unav
 Because it lacks mandatory semantic content and belongs to provider schema 1.3.0, it
 cannot produce a completed 1.4.0 master without inventing content and cannot trigger an
 automatic paid retry.
+
+## Provider schema 1.5.0: fixed positions, offline verification
+
+The next real 1.4.0 attempt returned HTTP 400 `INVALID_ARGUMENT` during inference. The
+state records one generate attempt, zero successes and zero provider responses. Google
+returned only "Request contains an invalid argument." This confirms rejection of that
+request, not which individual enum/cardinality/complexity limit was responsible.
+The historical 1.4.0 and missing-composition 1.3.0 records remain unchanged in this update.
+
+Version 1.5.0 replaces `{key, values}` collections with two homogeneous array blocks:
+`scalar_values` is an exact-length array of strings; `list_values` is an exact-length
+array of string arrays. Sections without scalar fields omit that block. No `$defs`,
+`$ref`, `prefixItems` or facet-key enums are used. Evidence keeps its two small enums;
+the existing explicit Seedance direction object remains part of each shot.
+
+| Section | scalar_values length | list_values length |
+|---|---:|---:|
+| reference_observation | absent | 4 |
+| reference_interpretation | 7 | 5 |
+| reference_strategy | 3 | 16 |
+| transfer_rules | absent | 4 |
+| original_adaptation | 6 | 5 |
+| each original shot | 17 | 4 |
+
+In every shot `scalar_values[6]` is `composition` and `[7]` is `framing`. Programmatic
+`positional_layout` in prompt `ads_art_reference_intelligence_v10_positional` specifies
+all positions in order; expander `1.5.0` maps them without interpretation. Incorrect
+lengths/types/unknown blocks or blank scalar values fail. Existing rich master validation
+and the eight conceptual sections remain intact. Expander-only updates do not change
+the provider prompt. Historical 1.3/1.4 facets require explicit version dispatch; missing
+historical content remains missing.
+
+| Metric (same 4–6 shot range) | 1.4.0 | 1.5.0 |
+|---|---:|---:|
+| serialized bytes | 5,707 | 3,706 |
+| property declarations | 46 | 38 |
+| constraint declarations | 38 | 34 |
+| schema objects | 83 | 73 |
+| maximum structural depth | 10 | 8 |
+
+Official [structured-output guidance](https://ai.google.dev/gemini-api/docs/structured-output)
+and the [generateContent reference](https://ai.google.dev/api/generate-content) list
+`items`, `minItems` and `maxItems` in the supported subset. Google also warns that schema
+complexity can cause rejection and schema-compliant values can still be semantically
+incorrect. Exact counts reserve slots, but cannot prove that text was assigned to the
+right concept; a same-type swap can pass structural validation. No claim of semantic
+or provider-acceptance guarantee is made.
+
+Offline verification used the installed ComfyUI `venv_comfy` interpreter with
+`google-genai 2.22.0`: 76 tests passed, none skipped. This includes full SDK request
+serialization through `httpx.MockTransport` with sockets blocked, deterministic complete
+master reconstruction, every positional boundary/type, explicit legacy dispatch,
+cache reuse on local changes and suppression of failed/unknown provider retries after
+an expander bump. No real Gemini/Higgsfield call was made. Workflows and approved inputs
+were not rewritten. The installed paid submission nodes remain disabled with false
+confirmations. Restart ComfyUI to load the code; running analysis after the provider
+contract change can require a new paid request and is pending explicit authorization.

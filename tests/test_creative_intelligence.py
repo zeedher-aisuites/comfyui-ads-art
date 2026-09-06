@@ -197,7 +197,7 @@ def fixture_response():
     }
 
 
-def fixture_provider_response(master=None):
+def fixture_provider_response(master=None, provider_schema_version=None):
     master = copy.deepcopy(master or fixture_response())
 
     def get_path(value, path):
@@ -232,6 +232,17 @@ def fixture_provider_response(master=None):
             }
         )
     provider["provenance"] = master["provenance"]
+    if (provider_schema_version or CREATIVE.CREATIVE_PROVIDER_SCHEMA_VERSION) == "1.5.0":
+        for section, fields in CREATIVE._SECTION_FIELDS.items():
+            provider[section] = {
+                block: [get_path(master[section], key) for key in fields[kind]]
+                for block, kind in (("scalar_values", "scalar"), ("list_values", "list"))
+                if fields[kind]
+            }
+        for shot, original in zip(provider["original_shot_plan"], master["original_shot_plan"]):
+            shot.pop("facets")
+            shot["scalar_values"] = [original[key] for key in CREATIVE._SHOT_SCALAR_FIELDS]
+            shot["list_values"] = [original[key] for key in CREATIVE._SHOT_LIST_FIELDS]
     return provider
 
 
@@ -254,7 +265,7 @@ class CreativeIntelligenceTests(unittest.TestCase):
         config = types.GenerateContentConfig(
             response_mime_type="application/json",
             response_json_schema=schema,
-            max_output_tokens=8192,
+            max_output_tokens=CREATIVE.CREATIVE_PROVIDER_MAX_OUTPUT_TOKENS,
             thinking_config={"thinking_level": "low"},
         )
         serialized = json.loads(config.model_dump_json(by_alias=True, exclude_none=True))
@@ -271,19 +282,67 @@ class CreativeIntelligenceTests(unittest.TestCase):
         self.assertLess(provider["serialized_bytes"], master["serialized_bytes"] * 0.75)
         self.assertLess(provider["constraint_declarations"], master["constraint_declarations"])
 
-    def test_provider_facet_contract_has_section_enums_and_exact_counts(self):
+    def test_sdk_generate_content_serializes_positions_over_mock_transport(self):
+        try:
+            import httpx
+            from google import genai
+            from google.genai import types
+        except ImportError:
+            self.skipTest("google-genai is not installed in this test interpreter")
+        schema = CREATIVE.creative_intelligence_provider_schema(2, 3)
+        received = []
+
+        def handle(request):
+            received.append(request)
+            return httpx.Response(200, json={
+                "candidates": [{"content": {"role": "model", "parts": [
+                    {"text": json.dumps(fixture_provider_response())}
+                ]}, "finishReason": "STOP"}],
+            })
+
+        # The actual SDK serializes the entire request, but no socket can be used.
+        with mock.patch("socket.socket.connect", side_effect=AssertionError("Network forbidden")), httpx.Client(
+            transport=httpx.MockTransport(handle), trust_env=False
+        ) as transport:
+            client = genai.Client(api_key="offline-test-key", vertexai=False, http_options=types.HttpOptions(
+                api_version="v1beta", httpx_client=transport,
+            ))
+            try:
+                response = client.models.generate_content(
+                    model=GEMINI.GEMINI_MODEL_ID,
+                    contents=[types.Part(
+                        file_data=types.FileData(file_uri="https://example.invalid/video", mime_type="video/mp4"),
+                        video_metadata=types.VideoMetadata(fps=GEMINI.GEMINI_GENERATION_CONFIG["video_sampling_fps"]),
+                    ), "Offline serialization fixture"],
+                    config={
+                        "response_mime_type": "application/json", "response_json_schema": schema,
+                        "max_output_tokens": CREATIVE.CREATIVE_PROVIDER_MAX_OUTPUT_TOKENS,
+                        "thinking_config": {"thinking_level": GEMINI.GEMINI_GENERATION_CONFIG["thinking_level"]},
+                    },
+                )
+            finally:
+                client.close()
+        self.assertEqual(len(received), 1)
+        self.assertTrue(received[0].url.path.endswith("/models/gemini-3.6-flash:generateContent"))
+        payload = json.loads(received[0].content)
+        self.assertEqual(payload["generationConfig"]["responseJsonSchema"], schema)
+        self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 16384)
+        self.assertNotIn("tools", payload)
+        self.assertEqual(
+            CREATIVE.expand_provider_creative_intelligence(json.loads(response.text)), fixture_response()
+        )
+
+    def test_provider_positions_have_exact_counts(self):
         schema = CREATIVE.creative_intelligence_provider_schema(4, 7)
-        for name, fields in CREATIVE._SECTION_FIELDS.items():
-            facets = schema["properties"][name]["properties"]["facets"]
-            expected = list(fields["scalar"] + fields["list"])
-            self.assertEqual(facets["items"]["properties"]["key"]["enum"], expected)
-            self.assertEqual(facets["minItems"], len(expected))
-            self.assertEqual(facets["maxItems"], len(expected))
-        shot_facets = schema["properties"]["original_shot_plan"]["items"]["properties"]["facets"]
-        expected_shot = list(CREATIVE._SHOT_SCALAR_FIELDS + CREATIVE._SHOT_LIST_FIELDS)
-        self.assertEqual(shot_facets["items"]["properties"]["key"]["enum"], expected_shot)
-        self.assertEqual(shot_facets["minItems"], len(expected_shot))
-        self.assertEqual(shot_facets["maxItems"], len(expected_shot))
+        for name, blocks in CREATIVE.creative_positional_layout().items():
+            section = schema["properties"][name]
+            if name == "original_shot_plan":
+                section = section["items"]
+            for block, keys in blocks.items():
+                array = section["properties"][block]
+                self.assertEqual(array["minItems"], len(keys))
+                self.assertEqual(array["maxItems"], len(keys))
+                self.assertNotIn("enum", array["items"])
 
     def test_prompt_programmatically_lists_every_required_facet(self):
         _, prompt = CREATIVE.build_creative_intelligence_prompt(
@@ -291,13 +350,13 @@ class CreativeIntelligenceTests(unittest.TestCase):
         )
         contract = json.loads(prompt)["compact_provider_contract"]
         self.assertEqual(
-            contract["required_shot_facet_keys"],
-            list(CREATIVE._SHOT_SCALAR_FIELDS + CREATIVE._SHOT_LIST_FIELDS),
+            contract["positional_layout"]["original_shot_plan"]["scalar_values"],
+            list(CREATIVE._SHOT_SCALAR_FIELDS),
         )
         for name, fields in CREATIVE._SECTION_FIELDS.items():
             self.assertEqual(
-                contract["required_section_facet_keys"][name],
-                list(fields["scalar"] + fields["list"]),
+                contract["positional_layout"][name]["list_values"],
+                list(fields["list"]),
             )
 
     def test_provider_expansion_is_deterministic_and_master_valid(self):
@@ -312,35 +371,35 @@ class CreativeIntelligenceTests(unittest.TestCase):
         self.assertTrue(validated["validation"]["separation_validated"])
 
     def test_provider_missing_and_unknown_facets_fail(self):
-        missing = fixture_provider_response()
+        missing = fixture_provider_response(provider_schema_version="1.3.0")
         missing["reference_interpretation"]["facets"].pop()
         with self.assertRaisesRegex(CORE.AdsArtError, "faltan facetas obligatorias"):
-            CREATIVE.expand_provider_creative_intelligence(missing)
-        unknown = fixture_provider_response()
+            CREATIVE.expand_provider_creative_intelligence(missing, provider_schema_version="1.3.0")
+        unknown = fixture_provider_response(provider_schema_version="1.3.0")
         unknown["reference_strategy"]["facets"][0]["key"] = "invented_strategy"
         with self.assertRaisesRegex(CORE.AdsArtError, "faceta desconocida"):
-            CREATIVE.expand_provider_creative_intelligence(unknown)
+            CREATIVE.expand_provider_creative_intelligence(unknown, provider_schema_version="1.3.0")
 
     def test_missing_duplicate_and_unknown_shot_composition_fail(self):
-        missing = fixture_provider_response()
+        missing = fixture_provider_response(provider_schema_version="1.3.0")
         missing["original_shot_plan"][2 - 1]["facets"] = [
             facet for facet in missing["original_shot_plan"][1]["facets"]
             if facet["key"] != "composition"
         ]
         with self.assertRaisesRegex(CORE.AdsArtError, "faltan facetas obligatorias: composition"):
-            CREATIVE.expand_provider_creative_intelligence(missing)
-        duplicate = fixture_provider_response()
+            CREATIVE.expand_provider_creative_intelligence(missing, provider_schema_version="1.3.0")
+        duplicate = fixture_provider_response(provider_schema_version="1.3.0")
         composition = next(
             facet for facet in duplicate["original_shot_plan"][0]["facets"]
             if facet["key"] == "composition"
         )
         duplicate["original_shot_plan"][0]["facets"].append(copy.deepcopy(composition))
         with self.assertRaisesRegex(CORE.AdsArtError, "faceta duplicada 'composition'"):
-            CREATIVE.expand_provider_creative_intelligence(duplicate)
-        unknown = fixture_provider_response()
+            CREATIVE.expand_provider_creative_intelligence(duplicate, provider_schema_version="1.3.0")
+        unknown = fixture_provider_response(provider_schema_version="1.3.0")
         unknown["original_shot_plan"][0]["facets"][0]["key"] = "invented_shot_facet"
         with self.assertRaisesRegex(CORE.AdsArtError, "faceta desconocida"):
-            CREATIVE.expand_provider_creative_intelligence(unknown)
+            CREATIVE.expand_provider_creative_intelligence(unknown, provider_schema_version="1.3.0")
 
     def test_provider_expansion_preserves_evidence_and_plan_validation(self):
         timestamp = fixture_provider_response()
@@ -382,11 +441,8 @@ class CreativeIntelligenceTests(unittest.TestCase):
 
     def test_provider_expansion_keeps_originality_guard(self):
         provider = fixture_provider_response()
-        facet = next(
-            item for item in provider["original_shot_plan"][0]["facets"]
-            if item["key"] == "nano_banana_prompt"
-        )
-        facet["values"] = ["Recreate the reference shot exactly."]
+        index = CREATIVE._SHOT_SCALAR_FIELDS.index("nano_banana_prompt")
+        provider["original_shot_plan"][0]["scalar_values"][index] = "Recreate the reference shot exactly."
         with self.assertRaisesRegex(CORE.AdsArtError, "copia literal"):
             CREATIVE.validate_creative_intelligence(
                 CREATIVE.expand_provider_creative_intelligence(provider),
@@ -543,7 +599,7 @@ class CreativeIntelligenceTests(unittest.TestCase):
 
         video = self.make_video()
         invalid = fixture_provider_response()
-        invalid["original_adaptation"]["facets"].pop()
+        invalid["original_adaptation"]["list_values"].pop()
         call_result = {
             "response": invalid,
             "usage": {}, "cost_estimate": {}, "timings": {},
@@ -564,7 +620,7 @@ class CreativeIntelligenceTests(unittest.TestCase):
         with mock.patch.object(NODES, "gemini_credentials_configured", return_value=True), mock.patch.object(
             NODES, "call_gemini_analysis", return_value=call_result
         ):
-            with self.assertRaisesRegex(CORE.AdsArtError, "faltan facetas obligatorias"):
+            with self.assertRaisesRegex(CORE.AdsArtError, "longitud exacta"):
                 node.analyze(*args)
         state_files = list(
             (Path(self.temp.name) / "ads_art" / "projects" / "creative_test" / "analysis" / "creative_intelligence" / "state").glob("*.json")
@@ -604,8 +660,8 @@ class CreativeIntelligenceTests(unittest.TestCase):
             NODES, "call_gemini_analysis", return_value=call_result
         ) as provider:
             node.analyze(*args)
-        with mock.patch.object(CREATIVE, "CREATIVE_EXPANDER_VERSION", "1.4.1"), mock.patch.object(
-            NODES, "CREATIVE_EXPANDER_VERSION", "1.4.1"
+        with mock.patch.object(CREATIVE, "CREATIVE_EXPANDER_VERSION", "1.5.1"), mock.patch.object(
+            NODES, "CREATIVE_EXPANDER_VERSION", "1.5.1"
         ), mock.patch.object(NODES, "gemini_credentials_configured", return_value=False), mock.patch.object(
             NODES, "call_gemini_analysis", side_effect=AssertionError("Gemini must not run")
         ) as provider_again, mock.patch.object(CORE, "submit_request", side_effect=AssertionError("Higgsfield must not run")):

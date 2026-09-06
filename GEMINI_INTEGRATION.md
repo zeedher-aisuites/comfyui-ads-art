@@ -1,7 +1,8 @@
 # Gemini Creative Intelligence Integration
 
-> Compact-provider update (2026-09-06): Gemini now receives inline provider schema `1.3.0`;
-> deterministic expander `1.3.0` restores internal master `2.0.0`. See
+> Positional-provider update (2026-09-06): the prepared request uses provider schema `1.5.0`;
+> deterministic expander `1.5.0` restores internal master `2.0.0`. Provider acceptance of
+> 1.5.0 is still untested; only offline validation/SDK serialization has run. See
 > `COMPACT_PROVIDER_SCHEMA_REPORT_2026-09-06.md`.
 > Creative Intelligence uses a bounded 16,384-token output ceiling; v1 remains at 8,192.
 
@@ -179,3 +180,15 @@ se ejecutan expansión, validación master y extracción de evidencia. El finger
 esa respuesta excluye la versión del expander, permitiendo corregir y reprocesar lógica
 local sin otra inferencia, pero incluye modelo, prompt, provider schema y los inputs del
 request para impedir reutilización incompatible.
+
+En 1.5.0 cada sección tiene `scalar_values` y/o `list_values` con longitudes exactas.
+El orden se genera desde las mismas constantes que usa el expander; cada toma tiene
+17 escalares y cuatro listas, con `composition` en `scalar_values[6]`. Se rechazan
+longitudes incorrectas, tipos incompatibles y escalares vacíos. Una longitud correcta
+no prueba que los textos correspondan al significado de su posición: sigue pendiente
+la revisión semántica y visual. Los dos enums pequeños de evidence permanecen.
+
+El prompt ya no incluye la versión local del expander. Los marcadores de fallo se
+buscan por fingerprint provider aunque cambie la materialización; así una corrección
+local no vuelve a intentar un request fallido/incierto sin raw. Las raws 1.3/1.4 sólo
+pueden expandirse explícitamente con su versión histórica; no se reinterpretan como 1.5.

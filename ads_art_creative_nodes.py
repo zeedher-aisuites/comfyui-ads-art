@@ -297,24 +297,32 @@ class AdsArtGeminiCreativeIntelligence:
             or provider_record.get("provider_request_fingerprint") != provider_request_fingerprint
         ):
             provider_record = None
+        marker = store.read_json(state_relative)
+        blocking_states = {
+            "analysis_started", "analysis_unknown", "analysis_failed",
+            "provider_response_received", "expansion_failed", "master_validation_failed",
+            "materialization_failed",
+        }
+        if not provider_record and not bool(allow_retry_after_unknown):
+            # Provider attempts survive local expander/validator version changes.
+            # Historical markers remain untouched and continue to block paid retries.
+            markers = [marker] if marker else []
+            for path in store.directory("analysis", "creative_intelligence", "state").glob("*.json"):
+                if path == store.path(state_relative):
+                    continue
+                prior = store.read_json(str(path.relative_to(store.root)))
+                if prior and prior.get("provider_request_fingerprint") == provider_request_fingerprint:
+                    markers.append(prior)
+            if any(prior.get("status") in blocking_states for prior in markers):
+                raise AdsArtError(
+                    "Existe un análisis creativo iniciado, fallido o incierto para esta solicitud provider. "
+                    "No se repetirá automáticamente aunque cambie el expander; revise el estado antes "
+                    "de habilitar el override manual."
+                )
         if not provider_record and not gemini_credentials_configured():
             raise AdsArtError(
                 "Falta GEMINI_API_KEY y no existe una respuesta provider compatible para reprocesar. "
                 "Defínala sólo en el entorno privado que inicia ComfyUI. No se subió ningún medio."
-            )
-        marker = store.read_json(state_relative)
-        if (
-            not provider_record
-            and marker
-            and marker.get("status") in {
-                "analysis_started", "analysis_unknown", "analysis_failed",
-                "expansion_failed", "master_validation_failed", "materialization_failed",
-            }
-            and not bool(allow_retry_after_unknown)
-        ):
-            raise AdsArtError(
-                "Existe un análisis creativo iniciado, fallido o incierto para esta huella. "
-                "No se repetirá automáticamente; revise el estado antes de habilitar el override manual."
             )
         started = {
             "schema_version": CREATIVE_SCHEMA_VERSION,
@@ -443,7 +451,9 @@ class AdsArtGeminiCreativeIntelligence:
                 store.write_json(state_relative, started)
                 raise
         try:
-            expanded_response = expand_provider_creative_intelligence(provider_response)
+            expanded_response = expand_provider_creative_intelligence(
+                provider_response, provider_schema_version=provider_record["provider_schema_version"]
+            )
         except Exception as exc:
             started["attempt_counters"]["expansion_failures"] += 1
             started.update({

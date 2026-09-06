@@ -15,10 +15,10 @@ from .ads_art_core import AdsArtError, json_dumps
 from .ads_art_gemini import GEMINI_GENERATION_CONFIG, GEMINI_MODEL_ID
 
 
-CREATIVE_PROMPT_VERSION = "ads_art_reference_intelligence_v9_exact_facets"
+CREATIVE_PROMPT_VERSION = "ads_art_reference_intelligence_v10_positional"
 CREATIVE_SCHEMA_VERSION = "2.0.0"
-CREATIVE_PROVIDER_SCHEMA_VERSION = "1.4.0"
-CREATIVE_EXPANDER_VERSION = "1.4.0"
+CREATIVE_PROVIDER_SCHEMA_VERSION = "1.5.0"
+CREATIVE_EXPANDER_VERSION = "1.5.0"
 CREATIVE_PROVIDER_MAX_OUTPUT_TOKENS = 16384
 EVIDENCE_SUPPORTS = {
     "opening_hook",
@@ -327,25 +327,42 @@ _SEEDANCE_FIELDS = (
 )
 
 
+def creative_positional_layout() -> dict[str, dict[str, list[str]]]:
+    """Order is part of the provider contract; changing it requires a schema bump."""
+
+    fields_by_section = {
+        **_SECTION_FIELDS,
+        "original_shot_plan": {"scalar": _SHOT_SCALAR_FIELDS, "list": _SHOT_LIST_FIELDS},
+    }
+    return {
+        name: {
+            block: list(fields[kind])
+            for block, kind in (("scalar_values", "scalar"), ("list_values", "list"))
+            if fields[kind]
+        }
+        for name, fields in fields_by_section.items()
+    }
+
+
 def creative_intelligence_provider_schema(min_shots: int, max_shots: int) -> dict[str, Any]:
     """Compact, typed provider contract; the rich v2 contract remains local."""
 
     if not 1 <= int(min_shots) <= int(max_shots) <= 16:
         raise AdsArtError("El rango de tomas originales debe cumplir 1 <= min <= max <= 16.")
-    # Intentionally inline and reference-free. Although the generic API reference
-    # documents $defs/$ref, gemini-3.6-flash + generateContent rejected the 1.0.0
-    # compact contract that used them. Every value is an array; scalar facets must
-    # contain exactly one value and are enforced by the deterministic expander.
-    def facet_collection(scalar: tuple[str, ...], list: tuple[str, ...]) -> dict[str, Any]:
-        keys = [*scalar, *list]
-        facet = _object({"key": {"type": "string", "enum": keys}, "values": _strings()})
+    # Homogeneous, exact-length arrays avoid repeated key enums and tuple schemas.
+    # The programmatic prompt layout assigns meaning to each position. Cardinality
+    # guarantees slots, not semantic correctness; strict local validation follows.
+    layout = creative_positional_layout()
+
+    def positional_section(name: str) -> dict[str, Any]:
         return _object({
-            "facets": {
+            block: {
                 "type": "array",
-                "items": facet,
+                "items": {"type": "string"} if block == "scalar_values" else _strings(),
                 "minItems": len(keys),
                 "maxItems": len(keys),
             }
+            for block, keys in layout[name].items()
         })
     evidence = _object(
         {
@@ -369,9 +386,7 @@ def creative_intelligence_provider_schema(min_shots: int, max_shots: int) -> dic
         {
             "shot_id": {"type": "string"},
             "planned_duration_seconds": {"type": "number"},
-            "facets": facet_collection(
-                scalar=_SHOT_SCALAR_FIELDS, list=_SHOT_LIST_FIELDS
-            )["properties"]["facets"],
+            **positional_section("original_shot_plan")["properties"],
             "seedance_direction": _object(
                 {
                     "performance": {"type": "string"},
@@ -395,12 +410,12 @@ def creative_intelligence_provider_schema(min_shots: int, max_shots: int) -> dic
         "type": "object",
         "additionalProperties": False,
         "properties": {
-            "reference_observation": facet_collection(**_SECTION_FIELDS["reference_observation"]),
-            "reference_interpretation": facet_collection(**_SECTION_FIELDS["reference_interpretation"]),
-            "reference_strategy": facet_collection(**_SECTION_FIELDS["reference_strategy"]),
+            "reference_observation": positional_section("reference_observation"),
+            "reference_interpretation": positional_section("reference_interpretation"),
+            "reference_strategy": positional_section("reference_strategy"),
             "evidence": {"type": "array", "items": evidence},
-            "transfer_rules": facet_collection(**_SECTION_FIELDS["transfer_rules"]),
-            "original_adaptation": facet_collection(**_SECTION_FIELDS["original_adaptation"]),
+            "transfer_rules": positional_section("transfer_rules"),
+            "original_adaptation": positional_section("original_adaptation"),
             "original_shot_plan": {
                 "type": "array", "items": shot,
                 "minItems": int(min_shots), "maxItems": int(max_shots),
@@ -463,9 +478,46 @@ def _expand_facets(
     return result
 
 
-def expand_provider_creative_intelligence(provider_response: dict[str, Any]) -> dict[str, Any]:
+def _expand_positions(
+    section: Any, *, label: str, scalar_fields: tuple[str, ...], list_fields: tuple[str, ...]
+) -> dict[str, Any]:
+    blocks = {
+        block: keys
+        for block, keys in (("scalar_values", scalar_fields), ("list_values", list_fields))
+        if keys
+    }
+    if not isinstance(section, dict) or set(section) != set(blocks):
+        raise AdsArtError(f"{label}: bloques posicionales requeridos: {', '.join(blocks)}.")
+    result: dict[str, Any] = {}
+    for block, keys in blocks.items():
+        values = section[block]
+        if not isinstance(values, list) or len(values) != len(keys):
+            raise AdsArtError(f"{label}.{block}: longitud exacta requerida {len(keys)}; no se rellenan posiciones.")
+        for index, key in enumerate(keys):
+            value = values[index]
+            if block == "scalar_values":
+                if not isinstance(value, str) or not value.strip():
+                    raise AdsArtError(f"{label}.{key}: posición {index} requiere texto no vacío.")
+            elif not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+                raise AdsArtError(f"{label}.{key}: posición {index} requiere una lista de texto.")
+            target = result
+            parts = key.split(".")
+            for part in parts[:-1]:
+                target = target.setdefault(part, {})
+            target[parts[-1]] = copy.deepcopy(value)
+    return result
+
+
+def expand_provider_creative_intelligence(
+    provider_response: dict[str, Any], *, provider_schema_version: str | None = None
+) -> dict[str, Any]:
     """Deterministically reorganize provider facets into the stable rich v2 master."""
 
+    version = provider_schema_version or CREATIVE_PROVIDER_SCHEMA_VERSION
+    if version not in {"1.3.0", "1.4.0", "1.5.0"}:
+        raise AdsArtError(f"Provider schema no compatible para expansión local: {version}.")
+    positional = version == "1.5.0"
+    expand_section = _expand_positions if positional else _expand_facets
     if not isinstance(provider_response, dict):
         raise AdsArtError("La respuesta compacta del proveedor debe ser un objeto.")
     required = set(_SECTION_FIELDS) | {"evidence", "original_shot_plan", "provenance"}
@@ -474,7 +526,7 @@ def expand_provider_creative_intelligence(provider_response: dict[str, Any]) -> 
         raise AdsArtError("La respuesta compacta contiene secciones no contratadas.")
     master: dict[str, Any] = {}
     for name, fields in _SECTION_FIELDS.items():
-        master[name] = _expand_facets(
+        master[name] = expand_section(
             provider_response[name], label=name,
             scalar_fields=fields["scalar"], list_fields=fields["list"],
         )
@@ -494,17 +546,13 @@ def expand_provider_creative_intelligence(provider_response: dict[str, Any]) -> 
     for index, provider_shot in enumerate(plan, 1):
         if not isinstance(provider_shot, dict):
             raise AdsArtError(f"original_shot_plan provider [{index}] debe ser objeto.")
-        _require_keys(
-            provider_shot,
-            {"shot_id", "planned_duration_seconds", "facets", "seedance_direction"},
-            f"original_shot_plan provider [{index}]",
-        )
-        if set(provider_shot) != {
-            "shot_id", "planned_duration_seconds", "facets", "seedance_direction"
-        }:
+        blocks = {"scalar_values", "list_values"} if positional else {"facets"}
+        required_shot = {"shot_id", "planned_duration_seconds", "seedance_direction"} | blocks
+        _require_keys(provider_shot, required_shot, f"original_shot_plan provider [{index}]")
+        if set(provider_shot) != required_shot:
             raise AdsArtError(f"original_shot_plan provider [{index}] contiene campos no contratados.")
-        expanded = _expand_facets(
-            {"facets": provider_shot["facets"]},
+        expanded = expand_section(
+            {block: provider_shot[block] for block in blocks},
             label=f"original_shot_plan[{index}]",
             scalar_fields=_SHOT_SCALAR_FIELDS,
             list_fields=_SHOT_LIST_FIELDS,
@@ -633,23 +681,17 @@ def build_creative_intelligence_prompt(
         ],
         "compact_provider_contract": {
             "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
-            "expander_version": CREATIVE_EXPANDER_VERSION,
             "max_output_tokens": CREATIVE_PROVIDER_MAX_OUTPUT_TOKENS,
-            "facet_rule": (
-                "Return every named facet exactly once as {key, values}. List fields use zero or more "
-                "strings; scalar fields use exactly one string. Never add an unknown facet key."
-            ),
-            "section_fields": _SECTION_FIELDS,
-            "original_shot_scalar_fields": _SHOT_SCALAR_FIELDS,
-            "original_shot_list_fields": _SHOT_LIST_FIELDS,
-            "required_section_facet_keys": {
-                name: list(fields["scalar"] + fields["list"])
-                for name, fields in _SECTION_FIELDS.items()
-            },
-            "required_shot_facet_keys": list(_SHOT_SCALAR_FIELDS + _SHOT_LIST_FIELDS),
-            "exact_facet_rule": (
-                "For every compact section and every shot, return exactly one facet entry for "
-                "each programmatically listed required key. Do not omit, duplicate or add keys."
+            "positional_layout": creative_positional_layout(),
+            "positional_rule": (
+                "For each section and each original shot, follow positional_layout in exactly the "
+                "listed order (zero-based indexing). scalar_values contains one nonempty string per "
+                "scalar field; list_values contains one array of strings per list field. "
+                "Return only values, never field names or key/value objects. Do not skip, shift, "
+                "duplicate or add positions. Keep an empty list in the assigned slot when a list "
+                "has no items. Give an explicit evidence-grounded uncertainty when a scalar cannot "
+                "be determined, and record it in uncertainties; do not invent content. Review "
+                "each position against its field before returning JSON. Array lengths are exact."
             ),
             "seedance_fields": _SEEDANCE_FIELDS,
             "evidence_kind_values": ["visual", "editing", "audio", "product_brand", "mixed"],
@@ -657,7 +699,7 @@ def build_creative_intelligence_prompt(
             "evidence_coverage_rule": (
                 "Across all evidence items, supports must collectively include every evidence_support_value."
             ),
-            "expansion_rule": "Facets are reorganized locally without adding or interpreting content.",
+            "expansion_rule": "Fixed positions are mapped locally without adding or interpreting content.",
         },
     }
     return system_instruction, json_dumps(payload)
