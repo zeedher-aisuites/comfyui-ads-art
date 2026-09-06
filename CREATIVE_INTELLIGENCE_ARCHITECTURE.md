@@ -1,13 +1,19 @@
 # Ads Art Creative Intelligence Architecture
 
 ```text
-Gemini compact provider schema 1.0.0
-  -> deterministic expander 1.0.0
+Gemini inline compact provider schema 1.3.0
+  -> deterministic expander 1.3.0
   -> rich master schema 2.0.0
 ```
 
 The provider boundary isolates Gemini schema complexity without changing downstream
 consumers. Facets use closed local allowlists; missing, duplicate or unknown keys fail.
+The boundary deliberately avoids `$defs/$ref`: provider schema 1.0.0 used them and was
+rejected by a real `gemini-3.6-flash:generateContent` request with `INVALID_ARGUMENT`.
+Schema 1.1.0 was accepted but omitted generic Seedance facets; 1.2.0 therefore makes
+the five Seedance direction fields an explicit required object.
+Schema 1.2.0 then demonstrated successful inference but free-form evidence labels;
+1.3.0 constrains evidence kinds/supports to canonical enums and requires full coverage.
 
 ## Decision
 

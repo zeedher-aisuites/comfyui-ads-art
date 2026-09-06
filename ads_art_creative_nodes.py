@@ -27,6 +27,7 @@ from .ads_art_core import (
 from .ads_art_creative import (
     CREATIVE_EXPANDER_VERSION,
     CREATIVE_PROMPT_VERSION,
+    CREATIVE_PROVIDER_MAX_OUTPUT_TOKENS,
     CREATIVE_PROVIDER_SCHEMA_VERSION,
     CREATIVE_SCHEMA_VERSION,
     build_creative_intelligence_prompt,
@@ -314,6 +315,7 @@ class AdsArtGeminiCreativeIntelligence:
             "api_key_persisted": False,
         }
         store.write_json(state_relative, started)
+        provider_response = None
         try:
             call_result = call_gemini_analysis(
                 video_path=source,
@@ -324,6 +326,7 @@ class AdsArtGeminiCreativeIntelligence:
                     brief["min_original_shots"], brief["max_original_shots"]
                 ),
                 response_schema_version=CREATIVE_PROVIDER_SCHEMA_VERSION,
+                max_output_tokens=CREATIVE_PROVIDER_MAX_OUTPUT_TOKENS,
                 source_has_audio=bool(metadata["has_audio"]),
                 duration_seconds=duration,
                 upload_retries=1,
@@ -375,7 +378,10 @@ class AdsArtGeminiCreativeIntelligence:
                     "prompt_version": CREATIVE_PROMPT_VERSION,
                     "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
                     "expander_version": CREATIVE_EXPANDER_VERSION,
-                    "generation_config": GEMINI_GENERATION_CONFIG,
+                    "generation_config": {
+                        **GEMINI_GENERATION_CONFIG,
+                        "max_output_tokens": CREATIVE_PROVIDER_MAX_OUTPUT_TOKENS,
+                    },
                     "provider_schema_metrics": response_json_schema_diagnostics(
                         creative_intelligence_provider_schema(
                             brief["min_original_shots"], brief["max_original_shots"]
@@ -424,6 +430,32 @@ class AdsArtGeminiCreativeIntelligence:
                     "automatic_retry_performed": False,
                 }
             )
+            if provider_response is not None:
+                failed_response_path = store.write_json(
+                    f"analysis/creative_intelligence/failed_provider/{cache_key}.json",
+                    {
+                        "status": "provider_response_rejected_locally",
+                        "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
+                        "expander_version": CREATIVE_EXPANDER_VERSION,
+                        "provider_response": provider_response,
+                    },
+                )
+                started["failed_provider_response_path"] = str(failed_response_path)
+            elif getattr(exc, "provider_response_text", None):
+                failed_response_path = store.write_json(
+                    f"analysis/creative_intelligence/failed_provider/{cache_key}.json",
+                    {
+                        "status": "provider_response_not_parseable",
+                        "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
+                        "expander_version": CREATIVE_EXPANDER_VERSION,
+                        "finish_reason": getattr(exc, "provider_finish_reason", None),
+                        "usage": getattr(exc, "provider_usage", {}),
+                        "raw_response_text": getattr(exc, "provider_response_text", ""),
+                    },
+                )
+                started["failed_provider_response_path"] = str(failed_response_path)
+                started["provider_finish_reason"] = getattr(exc, "provider_finish_reason", None)
+                started["provider_usage"] = getattr(exc, "provider_usage", {})
             store.write_json(state_relative, started)
             raise
         cache_path = store.write_json(cache_relative, master)

@@ -119,6 +119,9 @@ class GeminiCallError(AdsArtError):
         provider_error_type: str,
         provider_status_code: int | None,
         attempt_counters: dict[str, int] | None = None,
+        provider_response_text: str | None = None,
+        provider_usage: dict[str, Any] | None = None,
+        provider_finish_reason: str | None = None,
     ) -> None:
         super().__init__(message)
         self.stage = stage
@@ -128,6 +131,9 @@ class GeminiCallError(AdsArtError):
         self.provider_error_type = provider_error_type
         self.provider_status_code = provider_status_code
         self.attempt_counters = attempt_counters or {}
+        self.provider_response_text = provider_response_text
+        self.provider_usage = provider_usage or {}
+        self.provider_finish_reason = provider_finish_reason
 
 
 def sha256_file(path: str | Path) -> str:
@@ -682,6 +688,7 @@ def call_gemini_analysis(
     source_has_audio: bool,
     duration_seconds: float,
     response_schema_version: str = GEMINI_SCHEMA_VERSION,
+    max_output_tokens: int | None = None,
     upload_retries: int = 2,
     file_poll_attempts: int = 60,
 ) -> dict[str, Any]:
@@ -715,6 +722,12 @@ def call_gemini_analysis(
         "upload_attempts": 0,
         "generate_content_attempts": 0,
     }
+    provider_response_text: str | None = None
+    provider_usage: dict[str, Any] = {}
+    provider_finish_reason: str | None = None
+    effective_max_output_tokens = int(
+        max_output_tokens or GEMINI_GENERATION_CONFIG["max_output_tokens"]
+    )
     try:
         attempt_counters["model_preflight_attempts"] += 1
         availability = check_gemini_model_availability(client)
@@ -768,20 +781,29 @@ def call_gemini_analysis(
                 "system_instruction": system_instruction,
                 "response_mime_type": GEMINI_GENERATION_CONFIG["response_mime_type"],
                 "response_json_schema": response_schema,
-                "max_output_tokens": GEMINI_GENERATION_CONFIG["max_output_tokens"],
+                "max_output_tokens": effective_max_output_tokens,
                 "thinking_config": {
                     "thinking_level": GEMINI_GENERATION_CONFIG["thinking_level"]
                 },
             },
         )
         timings["inference_seconds"] = round(time.monotonic() - inference_started, 3)
+        provider_response_text = str(getattr(response, "text", "") or "")
+        provider_usage = extract_usage_metadata(response)
+        candidates = getattr(response, "candidates", None) or []
+        if candidates:
+            finish = getattr(candidates[0], "finish_reason", None)
+            provider_finish_reason = str(getattr(finish, "value", None) or finish or "") or None
         parsed = getattr(response, "parsed", None)
         if not isinstance(parsed, dict):
             try:
-                parsed = json.loads(str(getattr(response, "text", "") or ""))
+                parsed = json.loads(provider_response_text)
             except Exception as exc:
-                raise AdsArtError("Gemini respondió sin JSON estructurado válido.") from exc
-        usage = extract_usage_metadata(response)
+                detail = f" finish_reason={provider_finish_reason}" if provider_finish_reason else ""
+                raise AdsArtError(
+                    f"Gemini respondió sin JSON estructurado válido.{detail} chars={len(provider_response_text)}"
+                ) from exc
+        usage = provider_usage
         timings["total_remote_seconds"] = round(time.monotonic() - started, 3)
         return {
             "response": parsed,
@@ -801,6 +823,7 @@ def call_gemini_analysis(
                 "completed_at": utc_now(),
                 "request_parameters": {
                     **GEMINI_GENERATION_CONFIG,
+                    "max_output_tokens": effective_max_output_tokens,
                     "response_json_schema_version": response_schema_version,
                     "response_json_schema_metrics": schema_diagnostics,
                     "upload_retries": max(1, min(int(upload_retries), 2)),
@@ -838,6 +861,9 @@ def call_gemini_analysis(
             provider_error_type=type(exc).__name__,
             provider_status_code=status_code,
             attempt_counters=attempt_counters,
+            provider_response_text=provider_response_text,
+            provider_usage=provider_usage,
+            provider_finish_reason=provider_finish_reason,
         ) from exc
     finally:
         if uploaded is not None and getattr(uploaded, "name", None):

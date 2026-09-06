@@ -1,8 +1,9 @@
 # Gemini Creative Intelligence Integration
 
-> Compact-provider update (2026-09-06): Gemini now receives provider schema `1.0.0`;
-> deterministic expander `1.0.0` restores internal master `2.0.0`. See
+> Compact-provider update (2026-09-06): Gemini now receives inline provider schema `1.3.0`;
+> deterministic expander `1.3.0` restores internal master `2.0.0`. See
 > `COMPACT_PROVIDER_SCHEMA_REPORT_2026-09-06.md`.
+> Creative Intelligence uses a bounded 16,384-token output ceiling; v1 remains at 8,192.
 
 Fecha de implementación v2: 2026-09-06
 

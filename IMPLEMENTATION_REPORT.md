@@ -4,9 +4,15 @@
 
 The provider boundary now uses a compact typed facet contract while a deterministic
 local expander restores the unchanged rich master v2. For the 4–7 shot configuration,
-the provider contract measures 31 properties, 4,454 UTF-8 bytes, 60 schema objects and
-11 constraints. Provider schema, expander and prompt versions enter the cache signature.
-The full local suite has 55 passing tests; no remote or paid call was made. See
+the inline provider contract 1.3.0 measures 46 properties, 3,820 UTF-8 bytes, 83 schema
+objects and 20 constraints. It avoids `$defs/$ref` after 1.0.0 was rejected; 1.1.0 was
+accepted but omitted generic Seedance facets, so 1.2.0 makes those five fields explicit.
+After 1.2.0 returned free-form evidence labels, 1.3.0 added canonical evidence enums.
+Provider schema, expander and prompt versions enter the cache signature.
+After a 1.3.0 response was truncated near the former 8,192-token ceiling, the v2 request
+was bounded at 16,384 and parse failures were made recoverable with raw text, usage and
+finish-reason persistence. The v1 output setting is unchanged.
+The full local suite has 57 passing tests. No Higgsfield, Nano or Seedance call was made. See
 `COMPACT_PROVIDER_SCHEMA_REPORT_2026-09-06.md`.
 
 Fecha: 2026-09-06
@@ -110,15 +116,17 @@ La instalación comprobó igualdad exacta de las 676 posiciones/caracteres de
 - Workflow v2: 19 nodos, 23 enlaces, contratos registrados y submits desactivados.
 - Sincronización v2 sin modificar la v1 instalada.
 
-## Red y gasto
+## Verificación real posterior del contrato Gemini
 
-- Llamadas Gemini nuevas: **0**.
-- Llamadas/uploads/generaciones Higgsfield: **0**.
-- Créditos consumidos por esta migración: **0**.
+Tras aislar el 400, una única verificación autorizada de
+`gemini-3.6-flash + generateContent` completó preflight, subida, procesamiento e
+inferencia. El schema proveedor compacto `1.3.0` se expandió al master `2.0.0` y pasó la
+validación local. Se reportaron 16,493 tokens de entrada y 7,748 de salida; el costo
+calculado fue USD 0.04142475 y sigue siendo una **estimación**, no un cargo observado.
+El archivo remoto fue eliminado. No se llamó a Higgsfield, Nano Banana ni Seedance.
 
-El transporte Gemini real ya estaba verificado por el informe histórico 3.6. En esta
-migración, la lógica automática nueva se probó exclusivamente con mocks/fixtures; su
-primera respuesta real con schema v2 permanece **NO PROBADA**.
+El brief persistido de esta ejecución tenía rango 4–7, por lo que Gemini devolvió cuatro
+tomas. No hubo reintento para modificar ese parámetro.
 
 ## Workflow
 

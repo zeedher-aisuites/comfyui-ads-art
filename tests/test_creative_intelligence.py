@@ -208,11 +208,10 @@ def fixture_provider_response(master=None):
     provider = {}
     for section, fields in CREATIVE._SECTION_FIELDS.items():
         provider[section] = {
-            "scalar_facets": [
-                {"key": key, "value": get_path(master[section], key)}
+            "facets": [
+                {"key": key, "values": [get_path(master[section], key)]}
                 for key in fields["scalar"]
-            ],
-            "list_facets": [
+            ] + [
                 {"key": key, "values": get_path(master[section], key)}
                 for key in fields["list"]
             ],
@@ -224,16 +223,12 @@ def fixture_provider_response(master=None):
             {
                 "shot_id": shot["shot_id"],
                 "planned_duration_seconds": shot["planned_duration_seconds"],
-                "scalar_facets": [
-                    {"key": key, "value": shot[key]} for key in CREATIVE._SHOT_SCALAR_FIELDS
-                ],
-                "list_facets": [
+                "facets": [
+                    {"key": key, "values": [shot[key]]} for key in CREATIVE._SHOT_SCALAR_FIELDS
+                ] + [
                     {"key": key, "values": shot[key]} for key in CREATIVE._SHOT_LIST_FIELDS
                 ],
-                "seedance_facets": [
-                    {"key": key, "value": shot["seedance_direction"][key]}
-                    for key in CREATIVE._SEEDANCE_FIELDS
-                ],
+                "seedance_direction": copy.deepcopy(shot["seedance_direction"]),
             }
         )
     provider["provenance"] = master["provenance"]
@@ -274,7 +269,7 @@ class CreativeIntelligenceTests(unittest.TestCase):
         self.assertEqual(master["property_declarations"], 104)
         self.assertLess(provider["property_declarations"], master["property_declarations"] // 2)
         self.assertLess(provider["serialized_bytes"], master["serialized_bytes"] * 0.55)
-        self.assertLess(provider["constraint_declarations"], v1["constraint_declarations"])
+        self.assertLess(provider["constraint_declarations"], master["constraint_declarations"] // 2)
 
     def test_provider_expansion_is_deterministic_and_master_valid(self):
         provider = fixture_provider_response()
@@ -289,12 +284,12 @@ class CreativeIntelligenceTests(unittest.TestCase):
 
     def test_provider_missing_and_unknown_facets_fail(self):
         missing = fixture_provider_response()
-        missing["reference_interpretation"]["scalar_facets"].pop()
+        missing["reference_interpretation"]["facets"].pop()
         with self.assertRaisesRegex(CORE.AdsArtError, "faltan facetas obligatorias"):
             CREATIVE.expand_provider_creative_intelligence(missing)
         unknown = fixture_provider_response()
-        unknown["reference_strategy"]["scalar_facets"][0]["key"] = "invented_strategy"
-        with self.assertRaisesRegex(CORE.AdsArtError, "faceta escalar desconocida"):
+        unknown["reference_strategy"]["facets"][0]["key"] = "invented_strategy"
+        with self.assertRaisesRegex(CORE.AdsArtError, "faceta desconocida"):
             CREATIVE.expand_provider_creative_intelligence(unknown)
 
     def test_provider_expansion_preserves_evidence_and_plan_validation(self):
@@ -305,6 +300,21 @@ class CreativeIntelligenceTests(unittest.TestCase):
                 CREATIVE.expand_provider_creative_intelligence(timestamp),
                 duration_seconds=2.0, target_duration_seconds=10, min_shots=2, max_shots=3,
             )
+
+    def test_provider_evidence_kind_alias_is_normalized_not_invented(self):
+        provider = fixture_provider_response()
+        provider["evidence"][0]["evidence_kind"] = "observed_visual"
+        master = CREATIVE.expand_provider_creative_intelligence(provider)
+        self.assertEqual(master["evidence"][0]["evidence_kind"], "visual")
+        provider["evidence"][0]["evidence_kind"] = "invented_kind"
+        with self.assertRaisesRegex(CORE.AdsArtError, "evidence_kind desconocido"):
+            CREATIVE.expand_provider_creative_intelligence(provider)
+
+    def test_provider_shot_id_padding_is_canonicalized(self):
+        provider = fixture_provider_response()
+        provider["original_shot_plan"][0]["shot_id"] = "shot_001"
+        master = CREATIVE.expand_provider_creative_intelligence(provider)
+        self.assertEqual(master["original_shot_plan"][0]["shot_id"], "shot_01")
         count = fixture_provider_response()
         count["original_shot_plan"].pop()
         with self.assertRaisesRegex(CORE.AdsArtError, "fuera del rango"):
@@ -323,10 +333,10 @@ class CreativeIntelligenceTests(unittest.TestCase):
     def test_provider_expansion_keeps_originality_guard(self):
         provider = fixture_provider_response()
         facet = next(
-            item for item in provider["original_shot_plan"][0]["scalar_facets"]
+            item for item in provider["original_shot_plan"][0]["facets"]
             if item["key"] == "nano_banana_prompt"
         )
-        facet["value"] = "Recreate the reference shot exactly."
+        facet["values"] = ["Recreate the reference shot exactly."]
         with self.assertRaisesRegex(CORE.AdsArtError, "copia literal"):
             CREATIVE.validate_creative_intelligence(
                 CREATIVE.expand_provider_creative_intelligence(provider),
@@ -439,6 +449,7 @@ class CreativeIntelligenceTests(unittest.TestCase):
         signature = CREATIVE.creative_signature(**base)
         self.assertEqual(signature["provider_schema_version"], CREATIVE.CREATIVE_PROVIDER_SCHEMA_VERSION)
         self.assertEqual(signature["expander_version"], CREATIVE.CREATIVE_EXPANDER_VERSION)
+        self.assertEqual(signature["max_output_tokens"], 16384)
 
     def test_missing_key_stops_before_provider_call(self):
         import torch
@@ -482,7 +493,7 @@ class CreativeIntelligenceTests(unittest.TestCase):
 
         video = self.make_video()
         invalid = fixture_provider_response()
-        invalid["original_adaptation"]["scalar_facets"].pop()
+        invalid["original_adaptation"]["facets"].pop()
         call_result = {
             "response": invalid,
             "usage": {}, "cost_estimate": {}, "timings": {},
