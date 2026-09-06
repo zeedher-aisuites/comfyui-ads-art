@@ -1,9 +1,12 @@
+import copy
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +20,12 @@ sys.modules[SPEC.name] = PACKAGE
 SPEC.loader.exec_module(PACKAGE)
 CORE = sys.modules["ads_art_test_package.ads_art_core"]
 NODES = sys.modules["ads_art_test_package.ads_art_nodes"]
+GEMINI = sys.modules["ads_art_test_package.ads_art_gemini"]
+SYNC_SPEC = importlib.util.spec_from_file_location(
+    "ads_art_sync_workflow", PACKAGE_ROOT / "scripts" / "sync_workflow.py"
+)
+SYNC = importlib.util.module_from_spec(SYNC_SPEC)
+SYNC_SPEC.loader.exec_module(SYNC)
 
 
 class AdsArtTests(unittest.TestCase):
@@ -55,10 +64,34 @@ class AdsArtTests(unittest.TestCase):
             "status": "prepared",
         }
 
+    def make_synthetic_video(self, name="two_shots.mp4"):
+        import av
+        import numpy as np
+
+        video_path = Path(self.temp.name) / name
+        container = av.open(str(video_path), mode="w")
+        stream = container.add_stream("mpeg4", rate=10)
+        stream.width = 64
+        stream.height = 64
+        stream.pix_fmt = "yuv420p"
+        for color in ((255, 0, 0), (0, 0, 255)):
+            for _ in range(10):
+                array = np.zeros((64, 64, 3), dtype=np.uint8)
+                array[:, :] = color
+                frame = av.VideoFrame.from_ndarray(array, format="rgb24")
+                for packet in stream.encode(frame):
+                    container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+        container.close()
+        return video_path
+
     def test_node_package_imports(self):
-        self.assertEqual(len(PACKAGE.NODE_CLASS_MAPPINGS), 12)
+        self.assertEqual(len(PACKAGE.NODE_CLASS_MAPPINGS), 14)
         self.assertIn("AdsArtPrepareVideoShot", PACKAGE.NODE_CLASS_MAPPINGS)
         self.assertIn("AdsArtRecoverJob", PACKAGE.NODE_CLASS_MAPPINGS)
+        self.assertIn("AdsArtGeminiAnalyzeCommercial", PACKAGE.NODE_CLASS_MAPPINGS)
+        self.assertIn("AdsArtGeminiShotDraft", PACKAGE.NODE_CLASS_MAPPINGS)
 
     def test_knowledge_base_is_the_supplied_catalog(self):
         knowledge = CORE.load_knowledge()
@@ -205,25 +238,7 @@ class AdsArtTests(unittest.TestCase):
         )
 
     def test_local_video_analysis_detects_and_extracts_synthetic_cut(self):
-        import av
-        import numpy as np
-
-        video_path = Path(self.temp.name) / "two_shots.mp4"
-        container = av.open(str(video_path), mode="w")
-        stream = container.add_stream("mpeg4", rate=10)
-        stream.width = 64
-        stream.height = 64
-        stream.pix_fmt = "yuv420p"
-        for color in ((255, 0, 0), (0, 0, 255)):
-            for _ in range(10):
-                array = np.zeros((64, 64, 3), dtype=np.uint8)
-                array[:, :] = color
-                frame = av.VideoFrame.from_ndarray(array, format="rgb24")
-                for packet in stream.encode(frame):
-                    container.mux(packet)
-        for packet in stream.encode():
-            container.mux(packet)
-        container.close()
+        video_path = self.make_synthetic_video()
 
         cuts, duration, detections = NODES._shot_boundaries(video_path, 0.1, 0.2, 10.0)
         self.assertGreaterEqual(len(cuts), 2)
@@ -234,6 +249,254 @@ class AdsArtTests(unittest.TestCase):
         )
         self.assertEqual(len(extracted), 2)
         self.assertTrue(all(path.is_file() for path in extracted))
+
+    def test_gemini_model_and_schema_are_exact_and_bounded(self):
+        self.assertEqual(GEMINI.GEMINI_MODEL_ID, "gemini-2.5-flash")
+        schema = GEMINI.gemini_analysis_schema(3)
+        self.assertEqual(schema["properties"]["shots"]["maxItems"], 3)
+        shot_properties = schema["properties"]["shots"]["items"]["properties"]
+        self.assertIn("observed", shot_properties)
+        self.assertIn("proposal", shot_properties)
+
+    def test_gemini_missing_key_fails_without_exposing_a_secret(self):
+        previous = os.environ.pop("GEMINI_API_KEY", None)
+        try:
+            with self.assertRaisesRegex(CORE.AdsArtError, "GEMINI_API_KEY"):
+                GEMINI.require_gemini_api_key()
+        finally:
+            if previous is not None:
+                os.environ["GEMINI_API_KEY"] = previous
+
+    def test_gemini_response_validation_checks_timestamps_and_catalog(self):
+        response = {
+            "analysis_summary": "Two observed color fields.",
+            "global_missing_information": ["Product is unspecified."],
+            "shots": [
+                {
+                    "shot_id": "shot_001",
+                    "observed": {
+                        "start_seconds": 0.0,
+                        "end_seconds": 1.0,
+                        "candidate_timestamps": [0.5],
+                        "description": "A red field.",
+                        "selection_reason": "Stable frame away from the cut.",
+                    },
+                    "proposal": {
+                        "objective": "Establish the scene.",
+                        "action": "Hold.",
+                        "framing_and_composition": "Centered.",
+                        "lighting": "Even.",
+                        "camera_concept_ids": ["eye_level"],
+                        "elements_to_preserve": ["red field"],
+                        "elements_to_remove": [],
+                        "elements_to_replace": [],
+                        "nano_banana_prompt": "Recreate the observed frame.",
+                        "seedance": {
+                            "performance": "Stillness.",
+                            "camera_movement": "Locked.",
+                            "rhythm": "Quiet.",
+                            "continuity": "Preserve geometry.",
+                        },
+                        "unverified_product_details": ["No product defined."],
+                    },
+                    "uncertainties": [],
+                    "contradictions": [],
+                }
+            ],
+        }
+        validated = GEMINI.validate_gemini_response(
+            response,
+            duration_seconds=2.0,
+            max_shots=3,
+            allowed_camera_ids={item["id"] for item in CORE.load_knowledge()["concepts"]},
+        )
+        self.assertEqual(validated["shots"][0]["proposal"]["camera_concept_ids"], ["eye_level"])
+        response["shots"][0]["observed"]["candidate_timestamps"] = [1.5]
+        with self.assertRaisesRegex(CORE.AdsArtError, "fuera de su intervalo"):
+            GEMINI.validate_gemini_response(
+                response,
+                duration_seconds=2.0,
+                max_shots=3,
+                allowed_camera_ids={"eye_level"},
+            )
+
+    def test_gemini_cost_is_estimate_from_reported_tokens_only(self):
+        cost = GEMINI.estimate_standard_paid_cost(
+            {
+                "prompt_token_count": 1_000_000,
+                "candidates_token_count": 1_000_000,
+                "thoughts_token_count": 0,
+            }
+        )
+        self.assertEqual(cost["amount_usd"], 2.8)
+        self.assertIsNone(cost["observed_charge_usd"])
+        self.assertTrue(cost["pricing"]["estimate_only"])
+
+    def test_gemini_prepare_local_only_makes_zero_remote_calls(self):
+        video_path = self.make_synthetic_video("gemini_preflight.mp4")
+        project = CORE.make_project(
+            "gemini_preflight",
+            "Keep the approved identity.",
+            "Do not invent product details.",
+            "No typography.",
+            "Faithful luxury reinterpretation.",
+            "auto",
+            "1080p",
+            False,
+        )
+        with mock.patch.object(
+            NODES,
+            "call_gemini_analysis",
+            side_effect=AssertionError("remote call must not run"),
+        ):
+            output = NODES.AdsArtGeminiAnalyzeCommercial().analyze(
+                json.dumps(project),
+                str(video_path),
+                "gemini-2.5-flash",
+                "faithful_reference",
+                3,
+                0.1,
+                0.2,
+                10.0,
+                False,
+                False,
+                True,
+                False,
+                2,
+                10,
+            )
+        analysis = json.loads(output["result"][0])
+        self.assertEqual(analysis["status"], "prepared_not_called")
+        self.assertEqual(analysis["gemini"]["remote_calls"], 0)
+        self.assertLessEqual(len(analysis["shots"]), 3)
+        self.assertTrue(all(not shot["review"]["approved"] for shot in analysis["shots"]))
+        self.assertFalse(analysis["original_video_forwarded_to_seedance"])
+        self.assertFalse(analysis["original_audio_forwarded_to_seedance"])
+
+    def test_manual_gemini_override_survives_blank_rerun(self):
+        from PIL import Image
+
+        frame = Path(self.temp.name) / "candidate.png"
+        Image.new("RGB", (32, 32), (12, 34, 56)).save(frame)
+        analysis = {
+            "project_id": "override_test",
+            "shots": [
+                {
+                    "shot_id": "shot_001",
+                    "representative_timestamp": 0.5,
+                    "selected_frame_path": str(frame),
+                    "gemini_observed": {"selection_reason": "Stable."},
+                    "gemini_proposal": {
+                        "objective": "Generated objective",
+                        "action": "Generated action",
+                        "camera_concept_ids": ["eye_level"],
+                        "framing_and_composition": "Centered",
+                        "lighting": "Soft",
+                        "elements_to_preserve": [],
+                        "elements_to_remove": [],
+                        "elements_to_replace": [],
+                        "nano_banana_prompt": "Generated frame prompt",
+                        "seedance": {
+                            "performance": "Subtle movement",
+                            "camera_movement": "Locked",
+                            "rhythm": "Slow",
+                            "continuity": "Stable",
+                        },
+                    },
+                    "uncertainties": [],
+                    "contradictions": [],
+                }
+            ],
+        }
+        node = NODES.AdsArtGeminiShotDraft()
+        first = node.materialize(json.dumps(analysis), 1, manual_objective="User objective")
+        second = node.materialize(json.dumps(analysis), 1, manual_objective="")
+        self.assertEqual(json.loads(first["result"][0])["effective"]["objective"], "User objective")
+        self.assertEqual(json.loads(second["result"][0])["effective"]["objective"], "User objective")
+
+    def test_seedance_prompt_can_be_updated_from_approved_frame(self):
+        import torch
+
+        project = CORE.make_project(
+            "seedance_draft",
+            "Keep the approved identity.",
+            "Do not invent the product.",
+            "No typography.",
+            "",
+            "auto",
+            "1080p",
+            False,
+        )
+        draft = {
+            "project_id": "seedance_draft",
+            "shot_id": "shot_001",
+            "effective": {
+                "seedance_performance": "She turns slowly.",
+                "seedance_camera_movement": "Locked eye-level camera.",
+                "seedance_rhythm": "Measured pace.",
+                "seedance_continuity": "Preserve the black gown.",
+            },
+        }
+        frame = torch.zeros((1, 80, 64, 3), dtype=torch.float32)
+        output = NODES.AdsArtPrepareVideoShot().prepare(
+            json.dumps(project),
+            frame,
+            frame,
+            "shot_001",
+            True,
+            True,
+            "",
+            "",
+            "",
+            "",
+            "The approved frame shows a closed gold gate.",
+            "Keep the fabric motion subtle.",
+            5,
+            5.0,
+            "auto",
+            False,
+            "1080p",
+            False,
+            "standard",
+            None,
+            json.dumps(draft),
+        )
+        request = json.loads(output["result"][0])
+        self.assertIn("She turns slowly.", request["prompt"])
+        self.assertIn("closed gold gate", request["prompt"])
+        self.assertTrue(request["metadata"]["prompt_updated_from_approved_frame"])
+        self.assertTrue(all(item["role"] in {"image", "start_image", "end_image"} for item in request["media"]))
+        self.assertFalse(request["metadata"]["original_video_forwarded"])
+        self.assertFalse(request["metadata"]["original_audio_forwarded"])
+
+    def test_workflow_sync_preserves_personal_widgets_and_forces_remote_off(self):
+        template = json.loads(
+            (PACKAGE_ROOT / "workflows" / "ads_art_prepare_v1.json").read_text(encoding="utf-8")
+        )
+        installed = copy.deepcopy(template)
+        identity = next(item for item in installed["nodes"] if item["id"] == 7)
+        identity["widgets_values"][0] = "Private identity notes that must survive."
+        gemini = next(item for item in installed["nodes"] if item["id"] == 23)
+        gemini["widgets_values"][8] = True
+        submit = next(item for item in installed["nodes"] if item["type"] == "AdsArtSubmitJob")
+        submit["widgets_values"][0] = True
+        merged = SYNC.merge_workflow(
+            template,
+            installed,
+            identity_image="approved.png",
+        )
+        identity_after = next(item for item in merged["nodes"] if item["id"] == 7)
+        gemini_after = next(item for item in merged["nodes"] if item["id"] == 23)
+        self.assertEqual(identity_after["widgets_values"][0], "Private identity notes that must survive.")
+        self.assertFalse(gemini_after["widgets_values"][8])
+        self.assertEqual(gemini_after["mode"], 0)
+        self.assertTrue(
+            all(
+                node["widgets_values"][0] is False and node["mode"] == 2
+                for node in merged["nodes"]
+                if node["type"] == "AdsArtSubmitJob"
+            )
+        )
 
     def test_workflow_links_are_well_formed_and_submission_defaults_off(self):
         workflow_path = PACKAGE_ROOT / "workflows" / "ads_art_prepare_v1.json"

@@ -1,64 +1,130 @@
-# Informe de implementación — Ads Art v1
+# Informe de implementación — Ads Art Gemini v1
 
 Fecha de verificación: 2026-09-06
 
+## Resultado
+
+Ads Art incorpora una primera integración funcional con Gemini para preparar el análisis
+del comercial, proponer hasta el número configurado de tomas, generar borradores de
+prompts de frame y movimiento y conectarlos con los planificadores existentes. La
+implementación está lista para una prueba remota, pero durante esta etapa sólo se ejecutó
+el preflight local: cero llamadas a Gemini y cero generaciones Higgsfield.
+
+El modelo está fijado a `gemini-2.5-flash`. La documentación oficial vigente declara
+entradas de video e imagen y structured outputs para este identificador. No hay alias,
+sustitución ni fallback silencioso.
+
 ## Implementado
 
-- Extensión aislada en `custom_nodes/ComfyUI-Ads-Art`; no se modificó el núcleo de ComfyUI ni ningún workflow existente.
-- Registro de proyecto con los cuatro controles de prompt, detección previa de contradicciones y precedencia de restricciones explícitas sobre creatividad.
-- Análisis local del comercial con PyAV: duración, dimensiones, FPS, pistas de audio, detección de cambios visuales, timestamps y extracción de frames representativos.
-- Revisión, aprobación y sustitución de cada frame por timestamp o por otra imagen.
-- Preparación de identidad con Nano Banana Pro y aprobación obligatoria antes de preparar tomas.
-- Planificación por toma usando IDs elegidos explícitamente de la base cinematográfica de 31 conceptos. Las láminas no se envían al proveedor.
-- Preparación de frames con `nano_banana_pro`, `4:5`, `2k` bloqueados en código.
-- Preparación de video con `seedance_2_5`, modo `omni_reference`, referencias exclusivamente de imagen y formato independiente.
-- Separación de solicitud, envío y consulta. Cada request/job se persiste por proyecto y toma.
-- Recuperación local por `request_id` persistido o por un `job_id` conocido, sin crear una nueva generación.
-- Prevención de duplicados por `request_id`; un envío incierto no se reintenta automáticamente.
-- Preflight de coste y reserva configurable de créditos antes de crear un job.
-- Consulta no bloqueante mediante `generate get`, descarga de resultados y regeneración aislada por toma.
-- Montaje local de clips con audio original por defecto, añadido después de la generación.
-- Workflow ComfyUI importable con los tres interruptores de generación de pago desactivados.
+- Transporte Gemini mediante el SDK oficial `google-genai`, cargado sólo al confirmar
+  una llamada remota.
+- Autenticación exclusiva con `GEMINI_API_KEY` del entorno; no existe campo de clave en
+  el nodo ni persistencia del secreto.
+- Prompt versionado `ads_art_gemini_commercial_v1` con los cuatro controles del proyecto,
+  catálogo completo de 31 conceptos, evidencia del detector local, máximo de tomas y
+  modo fiel/creativo.
+- Esquema JSON estricto que separa `observed` de `proposal` y exige timestamps,
+  candidatos, motivo, objetivo, acción, encuadre, luz, cámara, cambios, prompts,
+  dirección Seedance, incertidumbres y contradicciones.
+- Validación de intervalos contra la duración real, candidatos dentro de su toma e IDs
+  cinematográficos contra el catálogo local.
+- Detector local de cortes y selección de frame desde el video original. Se revisan
+  muestras cercanas, se evita una zona de 0.18 s alrededor de cortes cuando hay
+  alternativa y se compara una métrica local de nitidez.
+- Estado visible y salida de frames en ComfyUI. El nodo de borrador muestra motivo,
+  campos y prompts, y expone widgets editables por toma.
+- Overrides manuales persistentes: un campo no vacío gana sobre Gemini y se conserva si
+  el análisis se ejecuta otra vez.
+- Conexión del borrador al planificador Nano Banana Pro. Los widgets manuales del
+  planificador continúan teniendo precedencia.
+- Campos posteriores a aprobación en el planificador Seedance para describir el frame
+  recreado real y ajustar actuación/movimiento antes de preparar video.
+- Caché por SHA-256 y configuración completa. Una coincidencia terminada se reutiliza;
+  una llamada incierta queda bloqueada para impedir duplicados.
+- Una sola inferencia por intento confirmado, dos intentos máximos de subida, sondeo
+  acotado del archivo y eliminación best effort del archivo remoto.
+- Registro privado de modelo, versiones, parámetros, prompt, respuesta, timings, uso de
+  tokens, coste estimado y verificaciones locales.
+- Workflow portable actualizado y sincronizador que preserva widgets personales al
+  refrescar el workflow instalado.
 
-## Validaciones de seguridad y contrato
+## Restricciones conservadas
 
-- Se bloquean sustituciones de los modelos obligatorios.
-- Seedance rechaza extensiones de video/audio aunque se intenten etiquetar como imagen.
-- Seedance rechaza roles `video` y `audio`.
-- Seedance rechaza `video_edit`, `video_extension` y cualquier modo distinto de `omni_reference`.
-- Seedance rechaza `4:5`; `auto` es el valor inicial para no imponer recorte o deformación.
-- La adaptación de aspecto explícita requiere una casilla de aprobación cuando no coincide con el frame.
-- `negative_prompt` no se transporta como parámetro nativo: se compila dentro del prompt admitido.
-- El catálogo live del CLI se consulta nuevamente antes de un envío.
-- No se invoca `auth token`, no se registran secretos y los prompts no se imprimen a consola.
+- Nano Banana Pro permanece exactamente en `nano_banana_pro`, `4:5`, `2k`.
+- Seedance permanece en `seedance_2_5`, modo `omni_reference`.
+- Seedance sólo recibe roles de imagen y texto. El comercial y su audio nunca aparecen
+  en los medios de una solicitud Seedance.
+- No se infiere aprobación de identidad, frame fuente ni frame recreado.
+- Los tres nodos Higgsfield de envío permanecen desactivados y con
+  `confirm_paid_submission=false`.
+- El nodo Gemini instalado permanece con `confirm_gemini_analysis=false` y el override
+  de reintento incierto también está desactivado.
+- La integración Higgsfield sigue usando su CLI oficial; implementar Gemini no crea ni
+  implica un puente MCP.
 
-## Probado realmente
+## Pruebas ejecutadas realmente
 
-- JSON de conocimiento cargado y comparado estructuralmente con el adjunto: idéntico, 31 conceptos.
-- 18 pruebas automatizadas en `venv_comfy`, incluidas todas las restricciones anteriores, el modo preparación sin envío, la recuperación de jobs y el bloqueo de reintentos inciertos.
-- Importación de Python y compilación de los tres módulos.
-- Arranque temporal de ComfyUI 0.21.1 en puerto 8190: los 11 nodos iniciales se importaron y aparecieron en `/object_info`. El nodo de recuperación añadido después queda cubierto por importación y pruebas, no por un segundo arranque del servidor.
-- Validación estructural de los 22 enlaces del workflow y confirmación de que los tres nodos de envío inician en `false`; la cadena de recuperación también inicia desactivada.
-- Análisis local con un fixture sintético de dos planos: se detectó el corte y se extrajeron dos frames. Esto sólo prueba la infraestructura local, no la calidad sobre un comercial real.
-- Catálogo vigente contrastado por dos vías durante el desarrollo: el CLI oficial que ejecutan los nodos y, separadamente, las herramientas MCP disponibles al agente. Nano Banana Pro admite 4:5/2k y hasta 14 imágenes; Seedance 2.5 admite `auto, 21:9, 16:9, 4:3, 1:1, 3:4, 9:16`, 4–30 s y roles de imágenes de inicio/fin/referencia.
-- Autenticación comprobada por CLI para la sesión que usarán los nodos. La autenticación MCP sólo se comprobó como capacidad separada del agente; no constituye el transporte de la extensión. El correo de cuenta no se conserva en el proyecto ni en este informe.
+- Compilación de `ads_art_core.py`, `ads_art_gemini.py` y `ads_art_nodes.py`.
+- Instalación local de `google-genai==2.22.0` en `venv_comfy` y comprobación, sin red
+  de inferencia, de las firmas `files.upload/get/delete`, `models.generate_content`,
+  `response_json_schema` y `Part.from_bytes`.
+- 26 pruebas automatizadas: políticas de
+  imagen/video, anti-duplicado, recuperación, detector local, modelo y esquema Gemini,
+  timestamps, coste, clave ausente, preflight con cero llamadas y persistencia de
+  overrides, actualización del prompt Seedance y sincronización segura del workflow.
+- Fixture sintético de dos planos: corte detectado y frames extraídos.
+- Preflight real del comercial Dior copiado a `ComfyUI/input`:
 
-## Transporte de Higgsfield realmente implementado
+  - archivo de 11,081,299 bytes; SHA-256 idéntico a la fuente conservada en Downloads;
+  - duración 40.0 s, 1280 × 720;
+  - 17 cortes locales detectados;
+  - máximo de tres muestras, seleccionadas a 1.72 s, 20.60 s y 39.28 s;
+  - los tres archivos se inspeccionaron visualmente y quedaron `approved=false`;
+  - estado `prepared_not_called`, `remote_calls=0`.
 
-Los nodos usan exclusivamente el CLI oficial `@higgsfield/cli` mediante un subproceso local de `node.exe`; no implementan ni invocan un cliente MCP. Preparar una solicitud es local. Enviar usa `upload create`, `generate cost` y `generate create`; consultar usa `generate get`; la descarga de URLs de resultados se realiza en Python. Las herramientas MCP de esta sesión se usaron únicamente como contraste externo durante el desarrollo.
+- La copia de Madame X en `ComfyUI/input` coincide por SHA-256 con el resultado aprobado
+  conservado en el proyecto.
+- El workflow instalado preserva exactamente las `identity_notes` y los IDs de request/
+  job de la generación de identidad anterior.
+- El preflight detectó que `GEMINI_API_KEY` existe en el entorno del proceso de prueba,
+  sin leer ni registrar su valor. La autenticación efectiva no se comprobó porque eso
+  habría requerido una llamada a Google.
 
-Por tanto, el requisito original de un puente MCP sigue pendiente. Harían falta un servidor o cliente MCP accesible desde el proceso de ComfyUI, su transporte y autenticación documentados, y un contrato de herramientas equivalente para catálogo, upload, coste, creación y consulta. La integración CLI funcional se conserva mientras no exista ese contrato.
+## Costes y medición
 
-## No probado / requiere medios reales
+La tarifa Standard documentada para Gemini 2.5 Flash usada por esta integración es USD
+0.30/M tokens de entrada de texto/imagen/video y USD 2.50/M tokens de salida, incluido
+thinking, verificada el 2026-09-06. La estimación se calcula únicamente tras recibir uso
+reportado; antes de una llamada su valor es `null`. `observed_charge_usd` permanece
+separado y `null` porque una respuesta de inferencia no prueba el cargo de facturación.
 
-- No se cargó un comercial ni una obra, porque aún no fueron proporcionados.
-- No se ejecutó análisis semántico remoto. El plugin MCP de la sesión ofrece `video_analysis_create/status`, pero el CLI local 1.1.23 no documenta un comando equivalente; la v1 ofrece análisis manual editable y no inventa un endpoint.
-- No se enviaron uploads, jobs de imagen ni jobs de video.
-- No se consumieron créditos ni generaciones ilimitadas.
-- No se probó todavía la consulta ni la descarga contra un job real de Ads Art. Sí se probaron su persistencia, recuperación y protecciones localmente.
-- No se validó calidad visual, continuidad de identidad, geometría del producto, cumplimiento de prompts ni audio con resultados reales.
-- El montaje final necesita clips reales compatibles. `ffmpeg` no estaba en `PATH`, aunque se detectó una copia utilizable de CapCut; también puede definirse `ADS_ART_FFMPEG`.
+No hubo tokens, coste estimado ni cargo observado en esta etapa porque Gemini no se
+invocó.
 
-## Próximo paso concreto
+## Qué falta probar
 
-Reiniciar la instancia habitual de ComfyUI, importar `workflows/ads_art_prepare_v1.json`, cargar un comercial corto y la obra, ejecutar sólo preparación/análisis, revisar conflictos y frames, y aprobar explícitamente identidad y primera toma antes de activar un único envío de pago.
+- Asegurar que la instancia reiniciada de ComfyUI herede la `GEMINI_API_KEY` detectada;
+  si usa otro lanzador, configurarla allí de forma privada.
+- Reiniciar la instancia habitual para cargar las nuevas clases.
+- Ejecutar una llamada Gemini confirmada sobre Dior, inspeccionar el JSON real, tokens,
+  tiempos y versión de modelo reportada, y revisar manualmente las tres propuestas.
+- Aprobar un frame y comprobar el ciclo completo Gemini → planificador → Nano Banana Pro
+  sin enviar todavía, seguido más tarde por una generación autorizada explícitamente.
+- La calidad semántica, los prompts reales y el coste real no se afirman como probados.
+- Ningún envío o consulta Higgsfield se probó en esta etapa; sus registros históricos se
+  conservaron sin tocarlos.
+
+## Primer análisis real, cuando se autorice
+
+1. Verificar `google-genai==2.22.0` en `venv_comfy` y definir `GEMINI_API_KEY` sólo en
+   la terminal privada que iniciará ComfyUI.
+2. Reiniciar ComfyUI y abrir el workflow instalado de Ads Art.
+3. Verificar en **Gemini Commercial Analysis**: Dior, Madame X conectada,
+   `gemini-2.5-flash`, `faithful_reference`, máximo `3`, reutilización activa y reintento
+   incierto desactivado.
+4. Ejecutar una vez con `confirm_gemini_analysis=false` para revisar el preflight local.
+5. Cambiar únicamente `confirm_gemini_analysis=true` y ejecutar el nodo una vez.
+6. Devolver inmediatamente la confirmación a `false`. Si el estado queda incierto, no
+   repetir: revisar `analysis/gemini/inflight/` y decidir manualmente.
+7. Revisar los tres frames, observaciones, motivos, prompts e incertidumbres; no aprobar
+   visualmente ninguno por defecto.

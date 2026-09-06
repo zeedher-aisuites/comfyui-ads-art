@@ -45,6 +45,19 @@ from .ads_art_core import (
     submit_request,
     utc_now,
 )
+from .ads_art_gemini import (
+    GEMINI_GENERATION_CONFIG,
+    GEMINI_MODEL_ID,
+    GEMINI_PROMPT_VERSION,
+    GEMINI_SCHEMA_VERSION,
+    build_gemini_prompt,
+    call_gemini_analysis,
+    gemini_analysis_schema,
+    gemini_credentials_configured,
+    sha256_file,
+    stable_fingerprint,
+    validate_gemini_response,
+)
 
 
 def _ui_result(result: tuple[Any, ...], text: str):
@@ -185,6 +198,125 @@ def _extract_frame_at(video_path: Path, timestamp: float, output_path: Path) -> 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     chosen.to_image().convert("RGB").save(output_path, format="PNG")
     return output_path
+
+
+def _probe_video_metadata(video_path: Path) -> dict[str, Any]:
+    try:
+        import av
+    except ImportError as exc:
+        raise AdsArtError("PyAV no está instalado en el entorno activo de ComfyUI.") from exc
+    with av.open(str(video_path)) as container:
+        if not container.streams.video:
+            raise AdsArtError("El comercial no contiene video.")
+        video = container.streams.video[0]
+        fps = float(video.average_rate or video.base_rate or video.guessed_rate or 0)
+        duration = _video_duration(container, video)
+        audio_streams = list(container.streams.audio)
+        return {
+            "duration_seconds": round(duration, 6),
+            "width": int(video.codec_context.width),
+            "height": int(video.codec_context.height),
+            "fps": round(fps, 6),
+            "frame_count_declared": int(video.frames or 0),
+            "has_audio": bool(audio_streams),
+            "audio_streams": [
+                {
+                    "codec": getattr(stream.codec_context, "name", None),
+                    "channels": getattr(stream.codec_context, "channels", None),
+                    "sample_rate": getattr(stream.codec_context, "sample_rate", None),
+                }
+                for stream in audio_streams
+            ],
+        }
+
+
+def _sharpness_score(image: Image.Image) -> float:
+    gray = np.asarray(
+        image.convert("L").resize((256, 256), Image.Resampling.BILINEAR),
+        dtype=np.float32,
+    )
+    dx = np.diff(gray, axis=1)
+    dy = np.diff(gray, axis=0)
+    return float(np.var(dx) + np.var(dy))
+
+
+def _select_clean_candidate_frame(
+    video_path: Path,
+    candidates: list[float],
+    start_seconds: float,
+    end_seconds: float,
+    cut_timestamps: list[float],
+    output_path: Path,
+) -> dict[str, Any]:
+    """Inspect nearby source frames and prefer sharp samples away from cuts."""
+
+    try:
+        import av
+    except ImportError as exc:
+        raise AdsArtError("PyAV no está instalado en el entorno activo de ComfyUI.") from exc
+    expanded = sorted(
+        {
+            round(min(max(candidate + offset, start_seconds), end_seconds), 6)
+            for candidate in candidates
+            for offset in (-0.30, -0.15, 0.0, 0.15, 0.30)
+        }
+    )
+    evaluated: list[dict[str, Any]] = []
+    with av.open(str(video_path)) as container:
+        stream = container.streams.video[0]
+        fps = float(stream.average_rate or stream.base_rate or stream.guessed_rate or 0)
+        pending = list(expanded)
+        for index, frame in enumerate(container.decode(stream)):
+            if not pending:
+                break
+            timestamp = _frame_time(frame, index, fps)
+            while pending and timestamp >= pending[0]:
+                requested = pending.pop(0)
+                image = frame.to_image().convert("RGB")
+                distance_to_cut = min(
+                    (abs(timestamp - cut) for cut in cut_timestamps),
+                    default=float("inf"),
+                )
+                sharpness = _sharpness_score(image)
+                evaluated.append(
+                    {
+                        "requested_timestamp": requested,
+                        "decoded_timestamp": round(timestamp, 6),
+                        "sharpness_score": round(sharpness, 6),
+                        "distance_to_nearest_cut_seconds": (
+                            None if math.isinf(distance_to_cut) else round(distance_to_cut, 6)
+                        ),
+                        "near_transition": distance_to_cut < 0.18,
+                        "image": image,
+                    }
+                )
+    if not evaluated:
+        raise AdsArtError("No fue posible comprobar los frames candidatos de la toma.")
+    eligible = [item for item in evaluated if not item["near_transition"]] or evaluated
+    selected = max(eligible, key=lambda item: item["sharpness_score"])
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    selected["image"].save(output_path, format="PNG")
+    public_checks = [
+        {key: value for key, value in item.items() if key != "image"}
+        for item in evaluated
+    ]
+    return {
+        "selected_timestamp": selected["decoded_timestamp"],
+        "selected_frame_path": str(output_path),
+        "selected_sharpness_score": selected["sharpness_score"],
+        "selected_distance_to_nearest_cut_seconds": selected[
+            "distance_to_nearest_cut_seconds"
+        ],
+        "transition_avoidance_succeeded": not selected["near_transition"],
+        "nearby_candidates_checked": public_checks,
+        "review_status": "pending_visual_review",
+    }
+
+
+def _nearest_cut_distance(value: float, cuts: list[float]) -> float | None:
+    if not cuts:
+        return None
+    return round(min(abs(value - cut) for cut in cuts), 6)
 
 
 class AdsArtProjectConfig:
@@ -408,6 +540,628 @@ class AdsArtAnalyzeCommercial:
         return _ui_result((json_dumps(analysis), batch, report), report)
 
 
+def _analysis_frame_batch(analysis: dict[str, Any]) -> Any:
+    paths = [
+        Path(str(shot.get("selected_frame_path", "")))
+        for shot in analysis.get("shots", [])
+    ]
+    if not paths or any(not path.is_file() for path in paths):
+        raise AdsArtError("El análisis no contiene todos los frames locales esperados.")
+    return torch.cat([load_image_tensor(path) for path in paths], dim=0)
+
+
+class AdsArtGeminiAnalyzeCommercial:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "project": ("ADS_ART_PROJECT",),
+                "video_path": ("STRING", {"default": ""}),
+                "model": ([GEMINI_MODEL_ID], {"default": GEMINI_MODEL_ID}),
+                "adaptation_mode": (
+                    ["faithful_reference", "creative_reinterpretation"],
+                    {"default": "faithful_reference"},
+                ),
+                "max_shots": ("INT", {"default": 3, "min": 1, "max": 24}),
+                "scene_threshold": (
+                    "FLOAT",
+                    {"default": 0.22, "min": 0.02, "max": 1.0, "step": 0.01},
+                ),
+                "min_shot_seconds": (
+                    "FLOAT",
+                    {"default": 0.5, "min": 0.1, "max": 30.0, "step": 0.1},
+                ),
+                "analysis_fps": (
+                    "FLOAT",
+                    {"default": 6.0, "min": 0.5, "max": 30.0, "step": 0.5},
+                ),
+                "identity_approved": ("BOOLEAN", {"default": False}),
+                "confirm_gemini_analysis": ("BOOLEAN", {"default": False}),
+                "reuse_matching_analysis": ("BOOLEAN", {"default": True}),
+                "allow_retry_after_unknown": ("BOOLEAN", {"default": False}),
+                "upload_retries": ("INT", {"default": 2, "min": 1, "max": 2}),
+                "file_poll_attempts": ("INT", {"default": 60, "min": 1, "max": 120}),
+            },
+            "optional": {"approved_identity": ("IMAGE",)},
+        }
+
+    RETURN_TYPES = ("ADS_ART_ANALYSIS", "IMAGE", "STRING", "STRING")
+    RETURN_NAMES = ("analysis", "proposed_frames", "analysis_status", "prompt_preview")
+    FUNCTION = "analyze"
+    CATEGORY = "Ads Art/02 Commercial"
+    OUTPUT_NODE = True
+    DESCRIPTION = (
+        "Prepara o ejecuta una sola llamada Gemini validada, cruza timestamps con cortes "
+        "locales y extrae candidatos nítidos. No genera medios."
+    )
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return float("nan")
+
+    def analyze(
+        self,
+        project,
+        video_path,
+        model,
+        adaptation_mode,
+        max_shots,
+        scene_threshold,
+        min_shot_seconds,
+        analysis_fps,
+        identity_approved,
+        confirm_gemini_analysis,
+        reuse_matching_analysis,
+        allow_retry_after_unknown,
+        upload_retries,
+        file_poll_attempts,
+        approved_identity=None,
+    ):
+        project_data = parse_json(project, "project")
+        if model != GEMINI_MODEL_ID:
+            raise AdsArtError(
+                f"Ads Art requiere exactamente {GEMINI_MODEL_ID}; no hay fallback automático."
+            )
+        source = resolve_input_path(video_path)
+        max_shots = int(max_shots)
+        metadata = _probe_video_metadata(source)
+        cuts, decoded_duration, detections = _shot_boundaries(
+            source,
+            float(scene_threshold),
+            float(min_shot_seconds),
+            float(analysis_fps),
+        )
+        duration = max(float(metadata["duration_seconds"]), float(decoded_duration))
+        metadata["duration_seconds"] = round(duration, 6)
+        cuts = sorted({round(min(max(float(value), 0.0), duration), 6) for value in cuts})
+        if not cuts or cuts[0] != 0.0:
+            cuts.insert(0, 0.0)
+
+        store = ProjectStore(project_data["project_id"])
+        identity_path: Path | None = None
+        identity_was_supplied = approved_identity is not None and bool(identity_approved)
+        identity_pending_note = None
+        if approved_identity is not None and not bool(identity_approved):
+            identity_pending_note = (
+                "Se conectó una identidad, pero identity_approved=false; no se enviará a Gemini."
+            )
+        if identity_was_supplied:
+            identity_path = store.path("references", "gemini", "approved_identity.png")
+            save_image_tensor(approved_identity, identity_path)
+
+        knowledge = load_knowledge()
+        local_observation = {
+            "source_filename": source.name,
+            "duration_seconds": round(duration, 6),
+            "width": metadata["width"],
+            "height": metadata["height"],
+            "fps": metadata["fps"],
+            "has_audio": metadata["has_audio"],
+            "detector": {
+                "type": "local_mean_absolute_visual_change",
+                "scene_threshold": float(scene_threshold),
+                "min_shot_seconds": float(min_shot_seconds),
+                "analysis_fps": float(analysis_fps),
+                "cut_timestamps": cuts,
+                "detections": detections,
+            },
+        }
+        system_instruction, prompt = build_gemini_prompt(
+            project_data,
+            knowledge,
+            local_observation,
+            max_shots,
+            adaptation_mode,
+            identity_was_supplied,
+        )
+        signature = {
+            "video_sha256": sha256_file(source),
+            "video_bytes": source.stat().st_size,
+            "identity_sha256": sha256_file(identity_path) if identity_path else None,
+            "identity_approved": identity_was_supplied,
+            "controls": project_data.get("controls", {}),
+            "knowledge_sha256": stable_fingerprint(knowledge),
+            "model": GEMINI_MODEL_ID,
+            "generation_config": GEMINI_GENERATION_CONFIG,
+            "prompt_version": GEMINI_PROMPT_VERSION,
+            "schema_version": GEMINI_SCHEMA_VERSION,
+            "adaptation_mode": adaptation_mode,
+            "max_shots": max_shots,
+            "local_detector": local_observation["detector"],
+        }
+        cache_key = stable_fingerprint(signature)
+        cache_relative = f"analysis/gemini/cache/{cache_key}.json"
+        marker_relative = f"analysis/gemini/state/{cache_key}.json"
+        cached = store.read_json(cache_relative) if bool(reuse_matching_analysis) else None
+        if cached and cached.get("status") == "completed":
+            cached["cache_reused_at"] = utc_now()
+            report = self._report(cached, cache_hit=True)
+            return _ui_result(
+                (json_dumps(cached), _analysis_frame_batch(cached), report, cached["gemini"]["prompt"]),
+                report,
+            )
+
+        if not bool(confirm_gemini_analysis):
+            analysis = self._prepare_local_only(
+                project_data=project_data,
+                source=source,
+                metadata=metadata,
+                cuts=cuts,
+                detections=detections,
+                max_shots=max_shots,
+                signature=signature,
+                cache_key=cache_key,
+                prompt=prompt,
+                system_instruction=system_instruction,
+                identity_was_supplied=identity_was_supplied,
+                identity_pending_note=identity_pending_note,
+            )
+            record = store.write_json(
+                f"analysis/gemini/prepared/{cache_key}.json", analysis
+            )
+            analysis["record_path"] = str(record)
+            report = self._report(analysis, cache_hit=False)
+            return _ui_result(
+                (json_dumps(analysis), _analysis_frame_batch(analysis), report, prompt),
+                report,
+            )
+
+        marker = store.read_json(marker_relative)
+        if (
+            marker
+            and marker.get("status") in {"analysis_started", "analysis_unknown"}
+            and not bool(allow_retry_after_unknown)
+        ):
+            raise AdsArtError(
+                "Ya existe un análisis Gemini iniciado o incierto para esta misma huella. "
+                "No se repetirá automáticamente. Revise su registro y active "
+                "allow_retry_after_unknown sólo tras confirmar que no existe respuesta reutilizable."
+            )
+        prior_attempts = int((marker or {}).get("inference_attempts", 0) or 0)
+        started_marker = {
+            "schema_version": GEMINI_SCHEMA_VERSION,
+            "status": "analysis_started",
+            "cache_key": cache_key,
+            "signature": signature,
+            "model": GEMINI_MODEL_ID,
+            "started_at": utc_now(),
+            "inference_attempts": prior_attempts + 1,
+            "manual_retry_override_used": bool(marker and allow_retry_after_unknown),
+            "api_key_persisted": False,
+        }
+        store.write_json(marker_relative, started_marker)
+        try:
+            call_result = call_gemini_analysis(
+                video_path=source,
+                approved_identity_path=identity_path,
+                system_instruction=system_instruction,
+                prompt=prompt,
+                response_schema=gemini_analysis_schema(max_shots),
+                upload_retries=int(upload_retries),
+                file_poll_attempts=int(file_poll_attempts),
+            )
+            response = validate_gemini_response(
+                call_result["response"],
+                duration_seconds=duration,
+                max_shots=max_shots,
+                allowed_camera_ids={item["id"] for item in knowledge["concepts"]},
+            )
+            analysis = self._materialize_response(
+                project_data=project_data,
+                source=source,
+                metadata=metadata,
+                cuts=cuts,
+                detections=detections,
+                response=response,
+                call_result=call_result,
+                signature=signature,
+                cache_key=cache_key,
+                prompt=prompt,
+                system_instruction=system_instruction,
+                identity_was_supplied=identity_was_supplied,
+            )
+        except Exception as exc:
+            started_marker.update(
+                {
+                    "status": "analysis_unknown",
+                    "failed_at": utc_now(),
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "automatic_retry_performed": False,
+                }
+            )
+            store.write_json(marker_relative, started_marker)
+            raise
+
+        cache_path = store.write_json(cache_relative, analysis)
+        analysis["record_path"] = str(cache_path)
+        store.write_json("analysis/commercial.json", analysis)
+        store.write_json(
+            marker_relative,
+            {
+                **started_marker,
+                "status": "completed",
+                "completed_at": utc_now(),
+                "cache_path": str(cache_path),
+            },
+        )
+        report = self._report(analysis, cache_hit=False)
+        return _ui_result(
+            (json_dumps(analysis), _analysis_frame_batch(analysis), report, prompt),
+            report,
+        )
+
+    def _prepare_local_only(
+        self,
+        *,
+        project_data: dict[str, Any],
+        source: Path,
+        metadata: dict[str, Any],
+        cuts: list[float],
+        detections: list[dict[str, float]],
+        max_shots: int,
+        signature: dict[str, Any],
+        cache_key: str,
+        prompt: str,
+        system_instruction: str,
+        identity_was_supplied: bool,
+        identity_pending_note: str | None,
+    ) -> dict[str, Any]:
+        duration = float(metadata["duration_seconds"])
+        selected_starts, truncated = _evenly_limit(cuts, max_shots)
+        frame_dir = ProjectStore(project_data["project_id"]).directory(
+            "frames", "gemini_preflight", cache_key
+        )
+        shots: list[dict[str, Any]] = []
+        for index, start in enumerate(selected_starts, 1):
+            end = next((cut for cut in cuts if cut > start), duration)
+            if end <= start:
+                end = duration
+            midpoint = round((start + end) / 2.0, 6)
+            quality = _select_clean_candidate_frame(
+                source,
+                [midpoint],
+                start,
+                end,
+                cuts[1:],
+                frame_dir / f"shot_{index:03d}.png",
+            )
+            uncertainty = [
+                "Gemini no se ejecutó; observación semántica, motivo editorial y prompts pendientes."
+            ]
+            if identity_pending_note:
+                uncertainty.append(identity_pending_note)
+            shots.append(
+                {
+                    "shot_id": f"shot_{index:03d}",
+                    "index": index,
+                    "start_seconds": round(start, 6),
+                    "end_seconds": round(end, 6),
+                    "representative_timestamp": quality["selected_timestamp"],
+                    "selected_frame_path": quality["selected_frame_path"],
+                    "review": {"approved": False, "notes": ""},
+                    "verified_local": {
+                        "cut_interval": [round(start, 6), round(end, 6)],
+                        "frame_quality": quality,
+                    },
+                    "gemini_observed": {
+                        "description": "",
+                        "selection_reason": "",
+                        "candidate_timestamps": [midpoint],
+                    },
+                    "gemini_proposal": {},
+                    "uncertainties": uncertainty,
+                    "contradictions": [],
+                }
+            )
+        return {
+            "schema_version": GEMINI_SCHEMA_VERSION,
+            "project_id": project_data["project_id"],
+            "source_video_path": str(source),
+            "created_at": utc_now(),
+            "status": "prepared_not_called",
+            "verified": metadata,
+            "detector": {
+                "type": "local_mean_absolute_visual_change",
+                "detections": detections,
+                "cut_timestamps": cuts,
+                "shot_limit_applied": truncated,
+            },
+            "shots": shots,
+            "gemini": {
+                "model": GEMINI_MODEL_ID,
+                "prompt_version": GEMINI_PROMPT_VERSION,
+                "schema_version": GEMINI_SCHEMA_VERSION,
+                "cache_key": cache_key,
+                "signature": signature,
+                "credentials_configured": gemini_credentials_configured(),
+                "confirm_gemini_analysis": False,
+                "remote_calls": 0,
+                "identity_supplied": identity_was_supplied,
+                "system_instruction": system_instruction,
+                "prompt": prompt,
+                "response": None,
+                "usage": None,
+                "cost": {
+                    "kind": "not_available_before_call",
+                    "amount_usd": None,
+                    "observed_charge_usd": None,
+                },
+            },
+            "original_video_forwarded_to_seedance": False,
+            "original_audio_forwarded_to_seedance": False,
+        }
+
+    def _materialize_response(
+        self,
+        *,
+        project_data: dict[str, Any],
+        source: Path,
+        metadata: dict[str, Any],
+        cuts: list[float],
+        detections: list[dict[str, float]],
+        response: dict[str, Any],
+        call_result: dict[str, Any],
+        signature: dict[str, Any],
+        cache_key: str,
+        prompt: str,
+        system_instruction: str,
+        identity_was_supplied: bool,
+    ) -> dict[str, Any]:
+        store = ProjectStore(project_data["project_id"])
+        frame_dir = store.directory("frames", "gemini", cache_key)
+        shots: list[dict[str, Any]] = []
+        for index, raw in enumerate(response["shots"], 1):
+            observed = raw["observed"]
+            proposal = raw["proposal"]
+            start = float(observed["start_seconds"])
+            end = float(observed["end_seconds"])
+            quality = _select_clean_candidate_frame(
+                source,
+                list(observed["candidate_timestamps"]),
+                start,
+                end,
+                cuts[1:],
+                frame_dir / f"{raw['shot_id']}.png",
+            )
+            uncertainties = list(raw["uncertainties"])
+            start_distance = _nearest_cut_distance(start, cuts)
+            end_distance = _nearest_cut_distance(end, cuts + [metadata["duration_seconds"]])
+            if start_distance is not None and start_distance > 0.75:
+                uncertainties.append(
+                    f"Inicio Gemini {start:.3f}s no coincide con un corte local cercano."
+                )
+            if end_distance is not None and end_distance > 0.75:
+                uncertainties.append(
+                    f"Fin Gemini {end:.3f}s no coincide con un corte local cercano."
+                )
+            if not quality["transition_avoidance_succeeded"]:
+                uncertainties.append(
+                    "Todos los candidatos cercanos quedaron junto a un corte; revisión manual necesaria."
+                )
+            shots.append(
+                {
+                    "shot_id": raw["shot_id"],
+                    "index": index,
+                    "start_seconds": round(start, 6),
+                    "end_seconds": round(end, 6),
+                    "representative_timestamp": quality["selected_timestamp"],
+                    "selected_frame_path": quality["selected_frame_path"],
+                    "review": {"approved": False, "notes": ""},
+                    "verified_local": {
+                        "gemini_interval_within_duration": True,
+                        "distance_from_start_to_local_cut_seconds": start_distance,
+                        "distance_from_end_to_local_cut_seconds": end_distance,
+                        "frame_quality": quality,
+                    },
+                    "gemini_observed": observed,
+                    "gemini_proposal": proposal,
+                    "uncertainties": uncertainties,
+                    "contradictions": raw["contradictions"],
+                }
+            )
+        return {
+            "schema_version": GEMINI_SCHEMA_VERSION,
+            "project_id": project_data["project_id"],
+            "source_video_path": str(source),
+            "created_at": utc_now(),
+            "status": "completed",
+            "analysis_summary": response["analysis_summary"],
+            "global_missing_information": response["global_missing_information"],
+            "verified": metadata,
+            "detector": {
+                "type": "local_mean_absolute_visual_change",
+                "detections": detections,
+                "cut_timestamps": cuts,
+            },
+            "shots": shots,
+            "gemini": {
+                "model": GEMINI_MODEL_ID,
+                "prompt_version": GEMINI_PROMPT_VERSION,
+                "schema_version": GEMINI_SCHEMA_VERSION,
+                "cache_key": cache_key,
+                "signature": signature,
+                "credentials_configured": True,
+                "confirm_gemini_analysis": True,
+                "remote_calls": 1,
+                "identity_supplied": identity_was_supplied,
+                "system_instruction": system_instruction,
+                "prompt": prompt,
+                "response": response,
+                "provider": call_result["provider"],
+                "timings": call_result["timings"],
+                "usage": call_result["usage"],
+                "cost": call_result["cost_estimate"],
+            },
+            "original_video_forwarded_to_seedance": False,
+            "original_audio_forwarded_to_seedance": False,
+        }
+
+    def _report(self, analysis: dict[str, Any], cache_hit: bool) -> str:
+        status = str(analysis.get("status", "unknown")).upper()
+        lines = [
+            f"Gemini: {status}",
+            f"Modelo fijo: {GEMINI_MODEL_ID}",
+            f"Caché: {'REUTILIZADA' if cache_hit else 'sin coincidencia reutilizada'}",
+            f"Tomas propuestas: {len(analysis.get('shots', []))}",
+            "Aprobaciones visuales inferidas: NO",
+        ]
+        if status == "PREPARED_NOT_CALLED":
+            lines.append("Llamadas remotas: 0. Active confirm_gemini_analysis sólo para ejecutar.")
+        for shot in analysis.get("shots", []):
+            reason = shot.get("gemini_observed", {}).get("selection_reason") or "pendiente de Gemini"
+            lines.append(
+                f"- {shot['shot_id']}: {shot['start_seconds']:.3f}-{shot['end_seconds']:.3f}s | "
+                f"frame {shot['representative_timestamp']:.3f}s | {reason}"
+            )
+        missing = analysis.get("global_missing_information", [])
+        if missing:
+            lines.append("Información faltante: " + " | ".join(missing))
+        return "\n".join(lines)
+
+
+class AdsArtGeminiShotDraft:
+    @classmethod
+    def INPUT_TYPES(cls):
+        multiline = {"multiline": True, "default": ""}
+        return {
+            "required": {
+                "analysis": ("ADS_ART_ANALYSIS",),
+                "shot_number": ("INT", {"default": 1, "min": 1, "max": 24}),
+                "manual_objective": ("STRING", multiline),
+                "manual_action": ("STRING", multiline),
+                "manual_camera_concepts": ("STRING", multiline),
+                "manual_framing_and_composition": ("STRING", multiline),
+                "manual_lighting": ("STRING", multiline),
+                "manual_elements_to_preserve": ("STRING", multiline),
+                "manual_planned_changes": ("STRING", multiline),
+                "manual_nano_banana_prompt": ("STRING", multiline),
+                "manual_seedance_performance": ("STRING", multiline),
+                "manual_seedance_camera_movement": ("STRING", multiline),
+                "manual_seedance_rhythm": ("STRING", multiline),
+                "manual_seedance_continuity": ("STRING", multiline),
+            }
+        }
+
+    RETURN_TYPES = ("ADS_ART_SHOT_DRAFT", "IMAGE", "STRING", "STRING")
+    RETURN_NAMES = ("shot_draft", "selected_frame", "frame_prompt", "seedance_prompt")
+    FUNCTION = "materialize"
+    CATEGORY = "Ads Art/04 Shot Planning"
+    OUTPUT_NODE = True
+    DESCRIPTION = (
+        "Materializa campos Gemini como valores por defecto. Los overrides manuales no vacíos "
+        "se guardan y nunca se sobrescriben al reanalizar."
+    )
+
+    def materialize(self, analysis, shot_number, **manual_values):
+        data = parse_json(analysis, "analysis")
+        index = int(shot_number) - 1
+        if index < 0 or index >= len(data.get("shots", [])):
+            raise AdsArtError("shot_number está fuera del análisis Gemini.")
+        shot = data["shots"][index]
+        proposal = shot.get("gemini_proposal") or {}
+        seedance = proposal.get("seedance") or {}
+        store = ProjectStore(data["project_id"])
+        override_relative = f"analysis/gemini/manual_overrides/{shot['shot_id']}.json"
+        previous = store.read_json(override_relative) or {}
+        provided = {
+            key.removeprefix("manual_"): str(value or "").strip()
+            for key, value in manual_values.items()
+            if str(value or "").strip()
+        }
+        preserved_overrides = dict(previous.get("values", {}))
+        preserved_overrides.update(provided)
+        if preserved_overrides:
+            store.write_json(
+                override_relative,
+                {
+                    "schema_version": "1.0.0",
+                    "shot_id": shot["shot_id"],
+                    "updated_at": utc_now(),
+                    "values": preserved_overrides,
+                    "policy": "nonempty_manual_values_override_gemini_and_survive_reanalysis",
+                },
+            )
+
+        replacements = [f"Replace: {item}" for item in proposal.get("elements_to_replace", [])]
+        removals = [f"Remove: {item}" for item in proposal.get("elements_to_remove", [])]
+        generated = {
+            "objective": str(proposal.get("objective", "")),
+            "action": str(proposal.get("action", "")),
+            "camera_concepts": ", ".join(proposal.get("camera_concept_ids", [])),
+            "framing_and_composition": str(proposal.get("framing_and_composition", "")),
+            "lighting": str(proposal.get("lighting", "")),
+            "elements_to_preserve": "\n".join(proposal.get("elements_to_preserve", [])),
+            "planned_changes": "\n".join([*removals, *replacements]),
+            "nano_banana_prompt": str(proposal.get("nano_banana_prompt", "")),
+            "seedance_performance": str(seedance.get("performance", "")),
+            "seedance_camera_movement": str(seedance.get("camera_movement", "")),
+            "seedance_rhythm": str(seedance.get("rhythm", "")),
+            "seedance_continuity": str(seedance.get("continuity", "")),
+        }
+        effective = {
+            key: preserved_overrides.get(key, value)
+            for key, value in generated.items()
+        }
+        draft = {
+            "schema_version": "1.0.0",
+            "project_id": data["project_id"],
+            "shot_id": shot["shot_id"],
+            "shot_number": int(shot_number),
+            "selected_frame_path": shot["selected_frame_path"],
+            "representative_timestamp": shot["representative_timestamp"],
+            "observed": shot.get("gemini_observed", {}),
+            "generated": generated,
+            "manual_overrides": preserved_overrides,
+            "effective": effective,
+            "uncertainties": shot.get("uncertainties", []),
+            "contradictions": shot.get("contradictions", []),
+            "visual_approval_inferred": False,
+            "updated_at": utc_now(),
+        }
+        frame_prompt = effective["nano_banana_prompt"]
+        seedance_prompt = "\n\n".join(
+            [
+                f"PERFORMANCE:\n{effective['seedance_performance']}",
+                f"CAMERA MOVEMENT:\n{effective['seedance_camera_movement']}",
+                f"RHYTHM:\n{effective['seedance_rhythm']}",
+                f"CONTINUITY:\n{effective['seedance_continuity']}",
+            ]
+        )
+        report = (
+            f"{shot['shot_id']} | frame {shot['representative_timestamp']:.3f}s | APROBACIÓN PENDIENTE\n"
+            f"Motivo: {shot.get('gemini_observed', {}).get('selection_reason') or '(pendiente)'}\n\n"
+            f"OBJETIVO:\n{effective['objective']}\n\nACCIÓN:\n{effective['action']}\n\n"
+            f"ENCUADRE:\n{effective['framing_and_composition']}\n\nILUMINACIÓN:\n{effective['lighting']}\n\n"
+            f"PROMPT NANO BANANA PRO:\n{frame_prompt}\n\nDIRECCIÓN SEEDANCE:\n{seedance_prompt}\n\n"
+            "Los campos manual_* no vacíos prevalecen y se conservan al reejecutar."
+        )
+        return _ui_result(
+            (json_dumps(draft), load_image_tensor(shot["selected_frame_path"]), frame_prompt, seedance_prompt),
+            report,
+        )
+
+
 class AdsArtReviewFrame:
     @classmethod
     def INPUT_TYPES(cls):
@@ -587,7 +1341,8 @@ class AdsArtPrepareShot:
                 "lighting": ("STRING", {"multiline": True, "default": ""}),
                 "elements_to_preserve": ("STRING", {"multiline": True, "default": ""}),
                 "planned_changes": ("STRING", {"multiline": True, "default": ""}),
-            }
+            },
+            "optional": {"gemini_draft": ("ADS_ART_SHOT_DRAFT",)},
         }
 
     RETURN_TYPES = ("ADS_ART_REQUEST", "STRING")
@@ -613,6 +1368,7 @@ class AdsArtPrepareShot:
         lighting,
         elements_to_preserve,
         planned_changes,
+        gemini_draft=None,
     ):
         project_data = parse_json(project, "project")
         analysis_data = parse_json(analysis, "analysis")
@@ -620,6 +1376,27 @@ class AdsArtPrepareShot:
         if index < 0 or index >= len(analysis_data.get("shots", [])):
             raise AdsArtError("shot_number está fuera del rango analizado.")
         shot = analysis_data["shots"][index]
+        draft_data: dict[str, Any] = {}
+        if gemini_draft:
+            parsed_draft = parse_json(gemini_draft, "gemini_draft")
+            if parsed_draft.get("project_id") != project_data.get("project_id"):
+                raise AdsArtError("El borrador Gemini pertenece a otro proyecto.")
+            if parsed_draft.get("shot_id") != shot.get("shot_id"):
+                raise AdsArtError("El borrador Gemini no corresponde a la toma seleccionada.")
+            draft_data = parsed_draft.get("effective") or {}
+
+        def manual_or_draft(manual_value: Any, draft_key: str) -> str:
+            manual_text = str(manual_value or "").strip()
+            return manual_text if manual_text else str(draft_data.get(draft_key, "") or "").strip()
+
+        objective = manual_or_draft(objective, "objective")
+        action = manual_or_draft(action, "action")
+        camera_concepts = manual_or_draft(camera_concepts, "camera_concepts")
+        framing_and_composition = manual_or_draft(framing_and_composition, "framing_and_composition")
+        lighting = manual_or_draft(lighting, "lighting")
+        elements_to_preserve = manual_or_draft(elements_to_preserve, "elements_to_preserve")
+        planned_changes = manual_or_draft(planned_changes, "planned_changes")
+        gemini_frame_prompt = str(draft_data.get("nano_banana_prompt", "") or "").strip()
         store = ProjectStore(project_data["project_id"])
         original_path = store.path("references", shot["shot_id"], "original_frame.png")
         identity_path = store.path("references", shot["shot_id"], "approved_identity.png")
@@ -674,6 +1451,9 @@ SHOT-SPECIFIC ELEMENTS TO PRESERVE:
 SHOT-SPECIFIC CHANGES:
 {shot_record['planned_changes']}
 
+GEMINI FRAME RECREATION DRAFT (subordinate to the explicit fields and user controls above):
+{gemini_frame_prompt or '(none supplied)'}
+
 Do not reproduce reference-board labels, grids, captions, or example subjects. Do not add unrequested typography. Return one coherent production-ready keyframe."""
         controls = compile_controls(project_data, "frame")
         if controls:
@@ -697,7 +1477,13 @@ Do not reproduce reference-board labels, grids, captions, or example subjects. D
                 "identity": bool(identity_approved),
             },
             extra_conflicts=concept_conflicts,
-            metadata={"shot_record": shot_record, "generated_frame_requires_user_approval": True},
+            metadata={
+                "shot_record": shot_record,
+                "gemini_draft_connected": bool(draft_data),
+                "gemini_frame_prompt_used": gemini_frame_prompt,
+                "manual_nonempty_values_override_gemini": True,
+                "generated_frame_requires_user_approval": True,
+            },
         )
         store.write_json(f"shots/{shot['shot_id']}/plan.json", shot_record)
         report = (
@@ -727,6 +1513,8 @@ class AdsArtPrepareVideoShot:
                 "camera_trajectory": ("STRING", {"multiline": True, "default": ""}),
                 "rhythm": ("STRING", {"multiline": True, "default": ""}),
                 "continuity": ("STRING", {"multiline": True, "default": ""}),
+                "approved_frame_observations": ("STRING", {"multiline": True, "default": ""}),
+                "seedance_prompt_adjustments": ("STRING", {"multiline": True, "default": ""}),
                 "generated_duration_seconds": ("INT", {"default": 5, "min": 4, "max": 30}),
                 "final_edit_duration_seconds": ("FLOAT", {"default": 5.0, "min": 0.1, "max": 120.0, "step": 0.1}),
                 "video_aspect_ratio": (list(VIDEO_ASPECT_RATIOS), {"default": "auto"}),
@@ -735,7 +1523,10 @@ class AdsArtPrepareVideoShot:
                 "generate_native_audio": ("BOOLEAN", {"default": False}),
                 "bitrate_mode": (["standard", "high"], {"default": "standard"}),
             },
-            "optional": {"approved_end_frame": ("IMAGE",)},
+            "optional": {
+                "approved_end_frame": ("IMAGE",),
+                "gemini_draft": ("ADS_ART_SHOT_DRAFT",),
+            },
         }
 
     RETURN_TYPES = ("ADS_ART_REQUEST", "STRING")
@@ -757,6 +1548,8 @@ class AdsArtPrepareVideoShot:
         camera_trajectory,
         rhythm,
         continuity,
+        approved_frame_observations,
+        seedance_prompt_adjustments,
         generated_duration_seconds,
         final_edit_duration_seconds,
         video_aspect_ratio,
@@ -765,12 +1558,32 @@ class AdsArtPrepareVideoShot:
         generate_native_audio,
         bitrate_mode,
         approved_end_frame=None,
+        gemini_draft=None,
     ):
         project_data = parse_json(project, "project")
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", (shot_id or "").strip()):
             raise AdsArtError("shot_id no es válido.")
         store = ProjectStore(project_data["project_id"])
         shot_id = shot_id.strip()
+        draft_data: dict[str, Any] = {}
+        if gemini_draft:
+            parsed_draft = parse_json(gemini_draft, "gemini_draft")
+            if parsed_draft.get("project_id") != project_data.get("project_id"):
+                raise AdsArtError("El borrador Gemini pertenece a otro proyecto.")
+            if parsed_draft.get("shot_id") != shot_id:
+                raise AdsArtError("El borrador Gemini no corresponde a shot_id.")
+            draft_data = parsed_draft.get("effective") or {}
+
+        def manual_or_draft(manual_value: Any, draft_key: str) -> str:
+            manual_text = str(manual_value or "").strip()
+            return manual_text if manual_text else str(draft_data.get(draft_key, "") or "").strip()
+
+        performance = manual_or_draft(performance, "seedance_performance")
+        camera_trajectory = manual_or_draft(camera_trajectory, "seedance_camera_movement")
+        rhythm = manual_or_draft(rhythm, "seedance_rhythm")
+        continuity = manual_or_draft(continuity, "seedance_continuity")
+        approved_frame_observations = str(approved_frame_observations or "").strip()
+        seedance_prompt_adjustments = str(seedance_prompt_adjustments or "").strip()
         frame_path = store.path("references", shot_id, "approved_recreated_frame.png")
         identity_path = store.path("references", shot_id, "approved_identity_for_video.png")
         save_image_tensor(approved_recreated_frame, frame_path)
@@ -818,6 +1631,12 @@ RHYTHM AND TIMING:
 CONTINUITY:
 {(continuity or '').strip()}
 
+OBSERVATIONS FROM THE USER-APPROVED RECREATED FRAME:
+{approved_frame_observations or '(none supplied; inspect the recreated frame before approval)'}
+
+POST-APPROVAL SEEDANCE ADJUSTMENTS:
+{seedance_prompt_adjustments or '(none supplied)'}
+
 Do not infer motion from or reproduce any source video or source audio; neither is supplied. Do not add cuts unless explicitly described. Maintain temporal identity and object consistency."""
         controls = compile_controls(project_data, "video")
         if controls:
@@ -849,6 +1668,11 @@ Do not infer motion from or reproduce any source video or source audio; neither 
                 "original_video_forwarded": False,
                 "original_audio_forwarded": False,
                 "original_audio_mounting_policy": "add_after_generation_by_default",
+                "gemini_draft_connected": bool(draft_data),
+                "manual_nonempty_values_override_gemini": True,
+                "prompt_updated_from_approved_frame": bool(
+                    approved_frame_observations or seedance_prompt_adjustments
+                ),
             },
         )
         report = (
@@ -1104,6 +1928,8 @@ NODE_CLASS_MAPPINGS = {
     "AdsArtProjectConfig": AdsArtProjectConfig,
     "AdsArtHiggsfieldStatus": AdsArtHiggsfieldStatus,
     "AdsArtAnalyzeCommercial": AdsArtAnalyzeCommercial,
+    "AdsArtGeminiAnalyzeCommercial": AdsArtGeminiAnalyzeCommercial,
+    "AdsArtGeminiShotDraft": AdsArtGeminiShotDraft,
     "AdsArtReviewFrame": AdsArtReviewFrame,
     "AdsArtPrepareIdentity": AdsArtPrepareIdentity,
     "AdsArtPrepareShot": AdsArtPrepareShot,
@@ -1120,6 +1946,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AdsArtProjectConfig": "Ads Art — Project & Conflicts",
     "AdsArtHiggsfieldStatus": "Ads Art — Higgsfield Status",
     "AdsArtAnalyzeCommercial": "Ads Art — Analyze Commercial",
+    "AdsArtGeminiAnalyzeCommercial": "Ads Art — Gemini Commercial Analysis",
+    "AdsArtGeminiShotDraft": "Ads Art — Gemini Shot Draft & Manual Overrides",
     "AdsArtReviewFrame": "Ads Art — Review / Replace Frame",
     "AdsArtPrepareIdentity": "Ads Art — Prepare Identity",
     "AdsArtPrepareShot": "Ads Art — Plan & Prepare Frame",

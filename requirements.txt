@@ -1,2 +1,3 @@
 # Already present in the verified ComfyUI venv_comfy environment.
 av
+google-genai>=2.22.0,<3
