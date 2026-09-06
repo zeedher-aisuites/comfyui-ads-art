@@ -1,8 +1,8 @@
 # Gemini Creative Intelligence Integration
 
 > Positional-provider update (2026-09-06): the prepared request uses provider schema `1.5.0`;
-> deterministic expander `1.5.0` restores internal master `2.0.0`. Provider acceptance of
-> 1.5.0 is still untested; only offline validation/SDK serialization has run. See
+> deterministic expander `1.5.1` restores internal master `2.0.0`. Provider schema 1.5.0
+> was accepted in a real response; expander 1.5.1 canonicalizes shot ID case locally. See
 > `COMPACT_PROVIDER_SCHEMA_REPORT_2026-09-06.md`.
 > Creative Intelligence uses a bounded 16,384-token output ceiling; v1 remains at 8,192.
 

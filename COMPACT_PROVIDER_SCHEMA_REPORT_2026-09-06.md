@@ -257,3 +257,27 @@ an expander bump. No real Gemini/Higgsfield call was made. Workflows and approve
 were not rewritten. The installed paid submission nodes remain disabled with false
 confirmations. Restart ComfyUI to load the code; running analysis after the provider
 contract change can require a new paid request and is pending explicit authorization.
+
+## Local recovery: case-only shot IDs, expander 1.5.1
+
+The subsequent real request with provider schema 1.5.0 succeeded and its raw response
+was persisted. Local master validation stopped on `SHOT_01`. This update changes only
+shot ID canonicalization: lowercase, then exact `shot_[0-9]{2}` matching. Duplicates are
+checked after canonicalization. IDs with a single digit, extra digits, other prefixes,
+whitespace or non-string types are rejected. The previous zero-padding repair is removed.
+Canonical IDs are written into the master and materialized shot plan; the raw stays
+unchanged. Provider schema 1.5.0 and prompt v10 are unchanged; only expander 1.5.1 changes
+the local materialization fingerprint.
+
+The saved response was reprocessed through the Ads Art analysis node with sockets and
+provider calls blocked and credential lookup disabled. Final result: `completed`, raw
+reused, **zero new Gemini calls**, four canonical shots (`shot_01` through `shot_04`),
+11 evidence frame files, 24.253 seconds of local reprocessing. Master validation passed
+separation, evidence ranges/coverage, originality guard and target duration. No visual
+approval was inferred and Nano/Seedance were not executed. Hash checks confirmed the
+original raw, failed-state record, installed workflows and approved identity were
+unchanged. Private recovery metrics are retained in the project analysis directory.
+
+The full offline suite passed 82 tests with no skips, including accepted case variants,
+strict invalid-format rejection, case-insensitive duplicates, canonical persisted
+master/cache/shot-plan IDs and preserved raw input.

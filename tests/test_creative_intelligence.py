@@ -419,11 +419,11 @@ class CreativeIntelligenceTests(unittest.TestCase):
         with self.assertRaisesRegex(CORE.AdsArtError, "evidence_kind desconocido"):
             CREATIVE.expand_provider_creative_intelligence(provider)
 
-    def test_provider_shot_id_padding_is_canonicalized(self):
+    def test_provider_shot_id_padding_is_rejected(self):
         provider = fixture_provider_response()
         provider["original_shot_plan"][0]["shot_id"] = "shot_001"
-        master = CREATIVE.expand_provider_creative_intelligence(provider)
-        self.assertEqual(master["original_shot_plan"][0]["shot_id"], "shot_01")
+        with self.assertRaisesRegex(CORE.AdsArtError, "shot_id original inválido"):
+            CREATIVE.expand_provider_creative_intelligence(provider)
         count = fixture_provider_response()
         count["original_shot_plan"].pop()
         with self.assertRaisesRegex(CORE.AdsArtError, "fuera del rango"):
@@ -660,8 +660,8 @@ class CreativeIntelligenceTests(unittest.TestCase):
             NODES, "call_gemini_analysis", return_value=call_result
         ) as provider:
             node.analyze(*args)
-        with mock.patch.object(CREATIVE, "CREATIVE_EXPANDER_VERSION", "1.5.1"), mock.patch.object(
-            NODES, "CREATIVE_EXPANDER_VERSION", "1.5.1"
+        with mock.patch.object(CREATIVE, "CREATIVE_EXPANDER_VERSION", "1.5.2"), mock.patch.object(
+            NODES, "CREATIVE_EXPANDER_VERSION", "1.5.2"
         ), mock.patch.object(NODES, "gemini_credentials_configured", return_value=False), mock.patch.object(
             NODES, "call_gemini_analysis", side_effect=AssertionError("Gemini must not run")
         ) as provider_again, mock.patch.object(CORE, "submit_request", side_effect=AssertionError("Higgsfield must not run")):

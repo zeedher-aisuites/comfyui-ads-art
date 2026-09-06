@@ -1,9 +1,9 @@
 # Ads Art Creative Intelligence Architecture
 
 ```text
-Gemini positional provider schema 1.5.0 (offline validated; remote acceptance pending)
+Gemini positional provider schema 1.5.0 (accepted in a real provider response)
   -> raw provider response persisted
-  -> deterministic expander 1.5.0
+  -> deterministic expander 1.5.1 (case-only shot ID canonicalization)
   -> rich master schema 2.0.0
 ```
 

@@ -18,7 +18,7 @@ from .ads_art_gemini import GEMINI_GENERATION_CONFIG, GEMINI_MODEL_ID
 CREATIVE_PROMPT_VERSION = "ads_art_reference_intelligence_v10_positional"
 CREATIVE_SCHEMA_VERSION = "2.0.0"
 CREATIVE_PROVIDER_SCHEMA_VERSION = "1.5.0"
-CREATIVE_EXPANDER_VERSION = "1.5.0"
+CREATIVE_EXPANDER_VERSION = "1.5.1"
 CREATIVE_PROVIDER_MAX_OUTPUT_TOKENS = 16384
 EVIDENCE_SUPPORTS = {
     "opening_hook",
@@ -508,6 +508,17 @@ def _expand_positions(
     return result
 
 
+def canonicalize_original_shot_id(value: Any) -> str:
+    """Normalize letter case only; never strip, coerce or repair the format."""
+
+    if not isinstance(value, str):
+        raise AdsArtError(f"shot_id original inválido: {value!r}")
+    canonical = value.lower()
+    if not re.fullmatch(r"shot_[0-9]{2}", canonical):
+        raise AdsArtError(f"shot_id original inválido: {value!r}")
+    return canonical
+
+
 def expand_provider_creative_intelligence(
     provider_response: dict[str, Any], *, provider_schema_version: str | None = None
 ) -> dict[str, Any]:
@@ -565,11 +576,7 @@ def expand_provider_creative_intelligence(
             )
         master_plan.append(
             {
-                "shot_id": (
-                    f"shot_{int(match.group(1)):02d}"
-                    if (match := re.fullmatch(r"shot_(\d+)", str(provider_shot["shot_id"])))
-                    else copy.deepcopy(provider_shot["shot_id"])
-                ),
+                "shot_id": canonicalize_original_shot_id(provider_shot["shot_id"]),
                 "planned_duration_seconds": copy.deepcopy(provider_shot["planned_duration_seconds"]),
                 **expanded,
                 "seedance_direction": copy.deepcopy(seedance),
@@ -816,10 +823,11 @@ def validate_creative_intelligence(
             raise AdsArtError(f"original_shot_plan[{index}] debe ser objeto.")
         schema_required = set(creative_intelligence_schema(min_shots, max_shots)["properties"]["original_shot_plan"]["items"]["required"])
         _require_keys(shot, schema_required, f"original_shot_plan[{index}]")
-        shot_id = str(shot["shot_id"]).strip()
-        if not re.fullmatch(r"shot_[0-9]{2}", shot_id) or shot_id in shot_ids:
+        shot_id = canonicalize_original_shot_id(shot["shot_id"])
+        if shot_id in shot_ids:
             raise AdsArtError(f"shot_id original inválido o duplicado: {shot_id!r}")
         shot_ids.add(shot_id)
+        shot["shot_id"] = shot_id
         planned = float(shot["planned_duration_seconds"])
         if planned <= 0:
             raise AdsArtError(f"{shot_id}: duración no positiva.")
