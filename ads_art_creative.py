@@ -7,6 +7,7 @@ objects so an observed fact can never silently become a generation instruction.
 
 from __future__ import annotations
 
+import copy
 import re
 from typing import Any
 
@@ -14,8 +15,10 @@ from .ads_art_core import AdsArtError, json_dumps
 from .ads_art_gemini import GEMINI_GENERATION_CONFIG, GEMINI_MODEL_ID
 
 
-CREATIVE_PROMPT_VERSION = "ads_art_reference_intelligence_v3"
+CREATIVE_PROMPT_VERSION = "ads_art_reference_intelligence_v4_compact_provider"
 CREATIVE_SCHEMA_VERSION = "2.0.0"
+CREATIVE_PROVIDER_SCHEMA_VERSION = "1.0.0"
+CREATIVE_EXPANDER_VERSION = "1.0.0"
 EVIDENCE_SUPPORTS = {
     "opening_hook",
     "hook_mechanism",
@@ -214,7 +217,6 @@ def creative_intelligence_schema(min_shots: int, max_shots: int) -> dict[str, An
         }
     )
     return {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Ads Art reference-driven creative intelligence",
         "type": "object",
         "additionalProperties": False,
@@ -244,6 +246,269 @@ def creative_intelligence_schema(min_shots: int, max_shots: int) -> dict[str, An
             "provenance",
         ],
     }
+
+
+_SECTION_FIELDS = {
+    "reference_observation": {
+        "scalar": (),
+        "list": (
+            "visual_facts", "editing_facts", "audio_facts", "product_and_brand_facts",
+        ),
+    },
+    "reference_interpretation": {
+        "scalar": (
+            "core_concept", "creative_thesis", "opening_hook", "hook_mechanism",
+            "emotional_promise", "audience_desire", "character_archetype",
+        ),
+        "list": (
+            "status_signals", "aspirational_mechanisms", "psychological_mechanisms",
+            "retention_mechanisms", "emotional_progression",
+        ),
+    },
+    "reference_strategy": {
+        "scalar": (
+            "editing_rhythm.pace", "product_reveal_strategy", "brand_memory_strategy",
+        ),
+        "list": (
+            "visual_grammar.principles", "visual_grammar.composition_patterns",
+            "visual_grammar.distance_and_framing", "visual_grammar.color_and_texture",
+            "camera_language.principles", "camera_language.framing_patterns",
+            "camera_language.lens_or_perspective_patterns", "camera_language.movement_patterns",
+            "lighting_language.principles", "lighting_language.contrast_and_direction",
+            "lighting_language.motivated_sources", "editing_rhythm.progression",
+            "editing_rhythm.shot_duration_patterns", "audio_strategy.observed_structure",
+            "audio_strategy.interpreted_function", "audio_strategy.transferable_audio_principles",
+        ),
+    },
+    "transfer_rules": {
+        "scalar": (),
+        "list": (
+            "transferable_principles", "literal_elements_to_avoid", "similarity_risks",
+            "brand_specific_elements_not_to_inherit",
+        ),
+    },
+    "original_adaptation": {
+        "scalar": (
+            "creative_thesis", "new_hook", "new_character_role", "character_behavior",
+            "new_brand_world", "new_product_role",
+        ),
+        "list": (
+            "emotional_arc", "visual_rules", "audio_rules", "editing_rules",
+            "differentiation_from_reference",
+        ),
+    },
+}
+
+_SHOT_SCALAR_FIELDS = (
+    "purpose", "psychological_function", "retention_function", "character_action",
+    "expression", "environment", "composition", "framing", "camera",
+    "lens_or_perspective", "movement", "lighting", "color_and_texture",
+    "product_presence", "audio_function", "continuity_notes", "nano_banana_prompt",
+)
+_SHOT_LIST_FIELDS = (
+    "reference_principles_used", "literal_reference_elements_avoided",
+    "differentiation_notes", "uncertainties",
+)
+_SEEDANCE_FIELDS = (
+    "performance", "camera_movement", "pacing", "emotional_goal", "continuity",
+)
+
+
+def creative_intelligence_provider_schema(min_shots: int, max_shots: int) -> dict[str, Any]:
+    """Compact, typed provider contract; the rich v2 contract remains local."""
+
+    if not 1 <= int(min_shots) <= int(max_shots) <= 16:
+        raise AdsArtError("El rango de tomas originales debe cumplir 1 <= min <= max <= 16.")
+    scalar_keys = sorted(
+        set(_SHOT_SCALAR_FIELDS)
+        | set(_SEEDANCE_FIELDS)
+        | {key for fields in _SECTION_FIELDS.values() for key in fields["scalar"]}
+    )
+    list_keys = sorted(
+        set(_SHOT_LIST_FIELDS)
+        | {key for fields in _SECTION_FIELDS.values() for key in fields["list"]}
+    )
+    scalar_facet = _object(
+        {"key": {"type": "string", "enum": scalar_keys}, "value": {"type": "string"}}
+    )
+    list_facet = _object(
+        {"key": {"type": "string", "enum": list_keys}, "values": _strings()}
+    )
+    facet_section = _object(
+        {
+            "scalar_facets": {"type": "array", "items": {"$ref": "#/$defs/scalar_facet"}},
+            "list_facets": {"type": "array", "items": {"$ref": "#/$defs/list_facet"}},
+        }
+    )
+    evidence = _object(
+        {
+            "evidence_id": {"type": "string"},
+            "timestamp_seconds": {"type": "number"},
+            "shot_start_seconds": {"type": "number"},
+            "shot_end_seconds": {"type": "number"},
+            "candidate_timestamps": {"type": "array", "items": {"type": "number"}},
+            "evidence_kind": {"type": "string"},
+            "observed_fact": {"type": "string"},
+            "supports": _strings(),
+        }
+    )
+    shot = _object(
+        {
+            "shot_id": {"type": "string"},
+            "planned_duration_seconds": {"type": "number"},
+            "scalar_facets": {"type": "array", "items": {"$ref": "#/$defs/scalar_facet"}},
+            "list_facets": {"type": "array", "items": {"$ref": "#/$defs/list_facet"}},
+            "seedance_facets": {"type": "array", "items": {"$ref": "#/$defs/scalar_facet"}},
+        }
+    )
+    provenance = _object(
+        {
+            "user_provided": _strings(),
+            "ai_proposed": _strings(),
+            "approved": _strings(),
+            "unresolved_inputs": _strings(),
+        }
+    )
+    return {
+        "$defs": {
+            "scalar_facet": scalar_facet,
+            "list_facet": list_facet,
+            "facet_section": facet_section,
+            "evidence": evidence,
+            "shot": shot,
+            "provenance": provenance,
+        },
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "reference_observation": {"$ref": "#/$defs/facet_section"},
+            "reference_interpretation": {"$ref": "#/$defs/facet_section"},
+            "reference_strategy": {"$ref": "#/$defs/facet_section"},
+            "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+            "transfer_rules": {"$ref": "#/$defs/facet_section"},
+            "original_adaptation": {"$ref": "#/$defs/facet_section"},
+            "original_shot_plan": {
+                "type": "array", "items": {"$ref": "#/$defs/shot"},
+                "minItems": int(min_shots), "maxItems": int(max_shots),
+            },
+            "provenance": {"$ref": "#/$defs/provenance"},
+        },
+        "required": [
+            "reference_observation", "reference_interpretation", "reference_strategy",
+            "evidence", "transfer_rules", "original_adaptation", "original_shot_plan",
+            "provenance",
+        ],
+    }
+
+
+def _expand_facets(
+    section: Any,
+    *,
+    label: str,
+    scalar_fields: tuple[str, ...],
+    list_fields: tuple[str, ...],
+) -> dict[str, Any]:
+    if not isinstance(section, dict):
+        raise AdsArtError(f"{label} provider debe ser objeto.")
+    _require_keys(section, {"scalar_facets", "list_facets"}, f"{label} provider")
+    if set(section) != {"scalar_facets", "list_facets"}:
+        raise AdsArtError(f"{label} provider contiene campos no contratados.")
+    result: dict[str, Any] = {}
+    seen: set[str] = set()
+
+    def assign(path: str, value: Any) -> None:
+        if path in seen:
+            raise AdsArtError(f"{label}: faceta duplicada {path!r}.")
+        seen.add(path)
+        target = result
+        parts = path.split(".")
+        for part in parts[:-1]:
+            target = target.setdefault(part, {})
+        target[parts[-1]] = copy.deepcopy(value)
+
+    scalar_items = section.get("scalar_facets")
+    list_items = section.get("list_facets")
+    if not isinstance(scalar_items, list) or not isinstance(list_items, list):
+        raise AdsArtError(f"{label}: las colecciones de facetas deben ser arrays.")
+    for item in scalar_items:
+        if not isinstance(item, dict) or set(item) != {"key", "value"}:
+            raise AdsArtError(f"{label}: faceta escalar inválida.")
+        key = str(item["key"])
+        if key not in scalar_fields:
+            raise AdsArtError(f"{label}: faceta escalar desconocida {key!r}.")
+        assign(key, str(item["value"]))
+    for item in list_items:
+        if not isinstance(item, dict) or set(item) != {"key", "values"}:
+            raise AdsArtError(f"{label}: faceta de lista inválida.")
+        key = str(item["key"])
+        if key not in list_fields:
+            raise AdsArtError(f"{label}: faceta de lista desconocida {key!r}.")
+        if not isinstance(item["values"], list) or any(not isinstance(v, str) for v in item["values"]):
+            raise AdsArtError(f"{label}.{key}: values debe ser una lista de texto.")
+        assign(key, item["values"])
+    missing = (set(scalar_fields) | set(list_fields)) - seen
+    if missing:
+        raise AdsArtError(f"{label}: faltan facetas obligatorias: {', '.join(sorted(missing))}")
+    return result
+
+
+def expand_provider_creative_intelligence(provider_response: dict[str, Any]) -> dict[str, Any]:
+    """Deterministically reorganize provider facets into the stable rich v2 master."""
+
+    if not isinstance(provider_response, dict):
+        raise AdsArtError("La respuesta compacta del proveedor debe ser un objeto.")
+    required = set(_SECTION_FIELDS) | {"evidence", "original_shot_plan", "provenance"}
+    _require_keys(provider_response, required, "respuesta compacta del proveedor")
+    if set(provider_response) != required:
+        raise AdsArtError("La respuesta compacta contiene secciones no contratadas.")
+    master: dict[str, Any] = {}
+    for name, fields in _SECTION_FIELDS.items():
+        master[name] = _expand_facets(
+            provider_response[name], label=name,
+            scalar_fields=fields["scalar"], list_fields=fields["list"],
+        )
+    if not isinstance(provider_response["evidence"], list):
+        raise AdsArtError("evidence provider debe ser un array.")
+    master["evidence"] = copy.deepcopy(provider_response["evidence"])
+    plan = provider_response["original_shot_plan"]
+    if not isinstance(plan, list):
+        raise AdsArtError("original_shot_plan provider debe ser un array.")
+    master_plan = []
+    for index, provider_shot in enumerate(plan, 1):
+        if not isinstance(provider_shot, dict):
+            raise AdsArtError(f"original_shot_plan provider [{index}] debe ser objeto.")
+        _require_keys(
+            provider_shot,
+            {"shot_id", "planned_duration_seconds", "scalar_facets", "list_facets", "seedance_facets"},
+            f"original_shot_plan provider [{index}]",
+        )
+        if set(provider_shot) != {
+            "shot_id", "planned_duration_seconds", "scalar_facets", "list_facets", "seedance_facets"
+        }:
+            raise AdsArtError(f"original_shot_plan provider [{index}] contiene campos no contratados.")
+        expanded = _expand_facets(
+            {"scalar_facets": provider_shot["scalar_facets"], "list_facets": provider_shot["list_facets"]},
+            label=f"original_shot_plan[{index}]",
+            scalar_fields=_SHOT_SCALAR_FIELDS, list_fields=_SHOT_LIST_FIELDS,
+        )
+        seedance = _expand_facets(
+            {"scalar_facets": provider_shot["seedance_facets"], "list_facets": []},
+            label=f"original_shot_plan[{index}].seedance_direction",
+            scalar_fields=_SEEDANCE_FIELDS, list_fields=(),
+        )
+        master_plan.append(
+            {
+                "shot_id": copy.deepcopy(provider_shot["shot_id"]),
+                "planned_duration_seconds": copy.deepcopy(provider_shot["planned_duration_seconds"]),
+                **expanded,
+                "seedance_direction": seedance,
+            }
+        )
+    master["original_shot_plan"] = master_plan
+    if not isinstance(provider_response["provenance"], dict):
+        raise AdsArtError("provenance provider debe ser objeto.")
+    master["provenance"] = copy.deepcopy(provider_response["provenance"])
+    return master
 
 
 def validate_creative_brief(brief: dict[str, Any]) -> dict[str, Any]:
@@ -342,6 +607,16 @@ def build_creative_intelligence_prompt(
             "reference_strategy contains abstracted mechanisms",
             "original_adaptation and original_shot_plan contain new creative proposals",
         ],
+        "compact_provider_contract": {
+            "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
+            "expander_version": CREATIVE_EXPANDER_VERSION,
+            "facet_rule": "Return every named facet exactly once; never add an unknown facet key.",
+            "section_fields": _SECTION_FIELDS,
+            "original_shot_scalar_fields": _SHOT_SCALAR_FIELDS,
+            "original_shot_list_fields": _SHOT_LIST_FIELDS,
+            "seedance_fields": _SEEDANCE_FIELDS,
+            "expansion_rule": "Facets are reorganized locally without adding or interpreting content.",
+        },
     }
     return system_instruction, json_dumps(payload)
 
@@ -395,7 +670,7 @@ def validate_creative_intelligence(
             raise AdsArtError(f"{section} debe ser un objeto separado.")
 
     evidence = response.get("evidence")
-    if not isinstance(evidence, list) or not evidence:
+    if not isinstance(evidence, list) or not evidence or len(evidence) > 24:
         raise AdsArtError("evidence debe contener evidencia timestamped.")
     evidence_ids: set[str] = set()
     covered: set[str] = set()
@@ -427,6 +702,8 @@ def validate_creative_intelligence(
             normalized.append(round(value, 6))
         if not str(item.get("observed_fact", "")).strip():
             raise AdsArtError(f"Evidencia {evidence_id}: observed_fact vacío.")
+        if item.get("evidence_kind") not in {"visual", "editing", "audio", "product_brand", "mixed"}:
+            raise AdsArtError(f"Evidencia {evidence_id}: evidence_kind desconocido.")
         supports = set(_require_string_list(item.get("supports"), f"{evidence_id}.supports", nonempty=True))
         if not supports <= EVIDENCE_SUPPORTS:
             raise AdsArtError(f"Evidencia {evidence_id}: supports contiene categorías desconocidas.")
@@ -534,5 +811,7 @@ def creative_signature(
         "generation_config": GEMINI_GENERATION_CONFIG,
         "prompt_version": CREATIVE_PROMPT_VERSION,
         "schema_version": CREATIVE_SCHEMA_VERSION,
+        "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
+        "expander_version": CREATIVE_EXPANDER_VERSION,
         "local_detector": local_detector,
     }

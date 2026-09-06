@@ -1,5 +1,14 @@
 # Implementation Report — Ads Art Creative Intelligence v2
 
+## Compact Gemini provider contract — 2026-09-06
+
+The provider boundary now uses a compact typed facet contract while a deterministic
+local expander restores the unchanged rich master v2. For the 4–7 shot configuration,
+the provider contract measures 31 properties, 4,454 UTF-8 bytes, 60 schema objects and
+11 constraints. Provider schema, expander and prompt versions enter the cache signature.
+The full local suite has 55 passing tests; no remote or paid call was made. See
+`COMPACT_PROVIDER_SCHEMA_REPORT_2026-09-06.md`.
+
 Fecha: 2026-09-06
 
 ## Arquitectura encontrada

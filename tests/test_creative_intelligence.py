@@ -197,7 +197,156 @@ def fixture_response():
     }
 
 
+def fixture_provider_response(master=None):
+    master = copy.deepcopy(master or fixture_response())
+
+    def get_path(value, path):
+        for part in path.split("."):
+            value = value[part]
+        return value
+
+    provider = {}
+    for section, fields in CREATIVE._SECTION_FIELDS.items():
+        provider[section] = {
+            "scalar_facets": [
+                {"key": key, "value": get_path(master[section], key)}
+                for key in fields["scalar"]
+            ],
+            "list_facets": [
+                {"key": key, "values": get_path(master[section], key)}
+                for key in fields["list"]
+            ],
+        }
+    provider["evidence"] = master["evidence"]
+    provider["original_shot_plan"] = []
+    for shot in master["original_shot_plan"]:
+        provider["original_shot_plan"].append(
+            {
+                "shot_id": shot["shot_id"],
+                "planned_duration_seconds": shot["planned_duration_seconds"],
+                "scalar_facets": [
+                    {"key": key, "value": shot[key]} for key in CREATIVE._SHOT_SCALAR_FIELDS
+                ],
+                "list_facets": [
+                    {"key": key, "values": shot[key]} for key in CREATIVE._SHOT_LIST_FIELDS
+                ],
+                "seedance_facets": [
+                    {"key": key, "value": shot["seedance_direction"][key]}
+                    for key in CREATIVE._SEEDANCE_FIELDS
+                ],
+            }
+        )
+    provider["provenance"] = master["provenance"]
+    return provider
+
+
 class CreativeIntelligenceTests(unittest.TestCase):
+    def test_provider_schema_uses_only_documented_keyword_subset(self):
+        for schema in (
+            GEMINI.gemini_analysis_schema(3),
+            CREATIVE.creative_intelligence_provider_schema(4, 7),
+        ):
+            diagnostics = GEMINI.validate_response_json_schema_for_provider(schema)
+            self.assertEqual(diagnostics["unsupported_keywords"], [])
+            self.assertNotIn("$schema", schema)
+
+    def test_installed_sdk_serializes_compact_schema_without_network(self):
+        try:
+            from google.genai import types
+        except ImportError:
+            self.skipTest("google-genai is not installed in this test interpreter")
+        schema = CREATIVE.creative_intelligence_provider_schema(4, 7)
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_json_schema=schema,
+            max_output_tokens=8192,
+            thinking_config={"thinking_level": "low"},
+        )
+        serialized = json.loads(config.model_dump_json(by_alias=True, exclude_none=True))
+        self.assertEqual(serialized["responseJsonSchema"], schema)
+        self.assertNotIn("$schema", serialized["responseJsonSchema"])
+
+    def test_compact_provider_schema_is_near_v1_and_far_below_master(self):
+        v1 = GEMINI.response_json_schema_diagnostics(GEMINI.gemini_analysis_schema(3))
+        master = GEMINI.response_json_schema_diagnostics(CREATIVE.creative_intelligence_schema(4, 7))
+        provider = GEMINI.response_json_schema_diagnostics(CREATIVE.creative_intelligence_provider_schema(4, 7))
+        self.assertEqual(v1["property_declarations"], 30)
+        self.assertEqual(master["property_declarations"], 104)
+        self.assertLess(provider["property_declarations"], master["property_declarations"] // 2)
+        self.assertLess(provider["serialized_bytes"], master["serialized_bytes"] * 0.55)
+        self.assertLess(provider["constraint_declarations"], v1["constraint_declarations"])
+
+    def test_provider_expansion_is_deterministic_and_master_valid(self):
+        provider = fixture_provider_response()
+        first = CREATIVE.expand_provider_creative_intelligence(provider)
+        second = CREATIVE.expand_provider_creative_intelligence(copy.deepcopy(provider))
+        self.assertEqual(first, second)
+        validated = CREATIVE.validate_creative_intelligence(
+            first, duration_seconds=2.0, target_duration_seconds=10,
+            min_shots=2, max_shots=3,
+        )
+        self.assertTrue(validated["validation"]["separation_validated"])
+
+    def test_provider_missing_and_unknown_facets_fail(self):
+        missing = fixture_provider_response()
+        missing["reference_interpretation"]["scalar_facets"].pop()
+        with self.assertRaisesRegex(CORE.AdsArtError, "faltan facetas obligatorias"):
+            CREATIVE.expand_provider_creative_intelligence(missing)
+        unknown = fixture_provider_response()
+        unknown["reference_strategy"]["scalar_facets"][0]["key"] = "invented_strategy"
+        with self.assertRaisesRegex(CORE.AdsArtError, "faceta escalar desconocida"):
+            CREATIVE.expand_provider_creative_intelligence(unknown)
+
+    def test_provider_expansion_preserves_evidence_and_plan_validation(self):
+        timestamp = fixture_provider_response()
+        timestamp["evidence"][0]["timestamp_seconds"] = 9.0
+        with self.assertRaisesRegex(CORE.AdsArtError, "fuera del video"):
+            CREATIVE.validate_creative_intelligence(
+                CREATIVE.expand_provider_creative_intelligence(timestamp),
+                duration_seconds=2.0, target_duration_seconds=10, min_shots=2, max_shots=3,
+            )
+        count = fixture_provider_response()
+        count["original_shot_plan"].pop()
+        with self.assertRaisesRegex(CORE.AdsArtError, "fuera del rango"):
+            CREATIVE.validate_creative_intelligence(
+                CREATIVE.expand_provider_creative_intelligence(count),
+                duration_seconds=2.0, target_duration_seconds=10, min_shots=2, max_shots=3,
+            )
+        duration = fixture_provider_response()
+        duration["original_shot_plan"][0]["planned_duration_seconds"] = 1
+        with self.assertRaisesRegex(CORE.AdsArtError, "no coincide"):
+            CREATIVE.validate_creative_intelligence(
+                CREATIVE.expand_provider_creative_intelligence(duration),
+                duration_seconds=2.0, target_duration_seconds=10, min_shots=2, max_shots=3,
+            )
+
+    def test_provider_expansion_keeps_originality_guard(self):
+        provider = fixture_provider_response()
+        facet = next(
+            item for item in provider["original_shot_plan"][0]["scalar_facets"]
+            if item["key"] == "nano_banana_prompt"
+        )
+        facet["value"] = "Recreate the reference shot exactly."
+        with self.assertRaisesRegex(CORE.AdsArtError, "copia literal"):
+            CREATIVE.validate_creative_intelligence(
+                CREATIVE.expand_provider_creative_intelligence(provider),
+                duration_seconds=2.0, target_duration_seconds=10, min_shots=2, max_shots=3,
+            )
+
+    def test_unsupported_schema_stops_before_key_or_network(self):
+        with mock.patch.object(GEMINI, "require_gemini_api_key") as key_lookup:
+            with self.assertRaisesRegex(CORE.AdsArtError, r"keywords no admitidos.*\$schema"):
+                GEMINI.call_gemini_analysis(
+                    video_path="never-opened.mp4",
+                    approved_identity_path=None,
+                    system_instruction="local",
+                    prompt="local",
+                    response_schema={"$schema": "draft", "type": "object"},
+                    source_has_audio=False,
+                    duration_seconds=1,
+                )
+        key_lookup.assert_not_called()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.previous_user_dir = CORE._default_user_directory
@@ -287,6 +436,9 @@ class CreativeIntelligenceTests(unittest.TestCase):
         self.assertNotEqual(original, GEMINI.stable_fingerprint(CREATIVE.creative_signature(**{**base, "brief": brand})))
         self.assertNotEqual(original, GEMINI.stable_fingerprint(CREATIVE.creative_signature(**{**base, "brief": character})))
         self.assertNotEqual(original, GEMINI.stable_fingerprint(CREATIVE.creative_signature(**{**base, "video_sha256": "b"})))
+        signature = CREATIVE.creative_signature(**base)
+        self.assertEqual(signature["provider_schema_version"], CREATIVE.CREATIVE_PROVIDER_SCHEMA_VERSION)
+        self.assertEqual(signature["expander_version"], CREATIVE.CREATIVE_EXPANDER_VERSION)
 
     def test_missing_key_stops_before_provider_call(self):
         import torch
@@ -307,7 +459,7 @@ class CreativeIntelligenceTests(unittest.TestCase):
 
         video = self.make_video()
         call_result = {
-            "response": fixture_response(),
+            "response": fixture_provider_response(),
             "usage": {"prompt_token_count": 100, "candidates_token_count": 50, "thoughts_token_count": None},
             "cost_estimate": {"amount_usd": 0.001, "observed_charge_usd": None},
             "timings": {"upload_seconds": 0.1, "inference_seconds": 0.2},
@@ -324,6 +476,42 @@ class CreativeIntelligenceTests(unittest.TestCase):
         master = json.loads(second["result"][0])
         self.assertFalse(master["safety"]["paid_generation_submitted"])
         self.assertTrue(all(item["frame_role"] == "REFERENCE_EVIDENCE_ONLY_NOT_GENERATION_TARGET" for item in master["evidence"]))
+
+    def test_invalid_provider_response_is_not_persisted_completed(self):
+        import torch
+
+        video = self.make_video()
+        invalid = fixture_provider_response()
+        invalid["original_adaptation"]["scalar_facets"].pop()
+        call_result = {
+            "response": invalid,
+            "usage": {}, "cost_estimate": {}, "timings": {},
+            "provider": {
+                "attempt_counters": {
+                    "model_preflight_attempts": 1,
+                    "upload_attempts": 1,
+                    "generate_content_attempts": 1,
+                }
+            },
+        }
+        node = NODES.AdsArtGeminiCreativeIntelligence()
+        args = (
+            json.dumps(fixture_brief()), str(video), "gemini-3.6-flash", "faithful_principles",
+            0.1, 0.2, 10.0, True, True, False, 1, 10,
+            torch.zeros((1, 64, 64, 3)),
+        )
+        with mock.patch.object(NODES, "gemini_credentials_configured", return_value=True), mock.patch.object(
+            NODES, "call_gemini_analysis", return_value=call_result
+        ):
+            with self.assertRaisesRegex(CORE.AdsArtError, "faltan facetas obligatorias"):
+                node.analyze(*args)
+        state_files = list(
+            (Path(self.temp.name) / "ads_art" / "projects" / "creative_test" / "analysis" / "creative_intelligence" / "state").glob("*.json")
+        )
+        self.assertEqual(len(state_files), 1)
+        state = json.loads(state_files[0].read_text(encoding="utf-8"))
+        self.assertEqual(state["status"], "analysis_failed")
+        self.assertEqual(state["attempt_counters"]["generate_content_attempts"], 1)
 
     def test_original_keyframe_request_never_attaches_reference_evidence(self):
         import torch

@@ -31,6 +31,33 @@ GEMINI_GENERATION_CONFIG = {
     "video_sampling_fps": 2.0,
 }
 
+# responseJsonSchema supports only this documented JSON Schema subset in the
+# Gemini Developer API.  Keep this check local and before credential/network
+# work so an invalid contract can never cause another media upload.
+GEMINI_RESPONSE_JSON_SCHEMA_KEYWORDS = {
+    "$id",
+    "$defs",
+    "$ref",
+    "$anchor",
+    "type",
+    "format",
+    "title",
+    "description",
+    "enum",
+    "items",
+    "prefixItems",
+    "minItems",
+    "maxItems",
+    "minimum",
+    "maximum",
+    "anyOf",
+    "oneOf",
+    "properties",
+    "additionalProperties",
+    "required",
+    "propertyOrdering",
+}
+
 # Verified against the official Gemini Developer API pricing page on
 # 2026-09-06.  This is an estimate for paid Standard service, never a claim
 # about the account's actual tier or observed invoice.
@@ -91,6 +118,7 @@ class GeminiCallError(AdsArtError):
         availability: dict[str, Any] | None,
         provider_error_type: str,
         provider_status_code: int | None,
+        attempt_counters: dict[str, int] | None = None,
     ) -> None:
         super().__init__(message)
         self.stage = stage
@@ -99,6 +127,7 @@ class GeminiCallError(AdsArtError):
         self.availability = availability
         self.provider_error_type = provider_error_type
         self.provider_status_code = provider_status_code
+        self.attempt_counters = attempt_counters or {}
 
 
 def sha256_file(path: str | Path) -> str:
@@ -114,6 +143,62 @@ def stable_fingerprint(value: dict[str, Any]) -> str:
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def response_json_schema_diagnostics(schema: dict[str, Any]) -> dict[str, Any]:
+    """Audit provider keywords and report complexity without contacting Google."""
+
+    unsupported: set[str] = set()
+    property_count = 0
+    constraint_count = 0
+    object_count = 0
+    max_depth = 0
+    constraint_keywords = {
+        "enum", "minItems", "maxItems", "minimum", "maximum",
+        "additionalProperties", "anyOf", "oneOf",
+    }
+
+    def visit(value: Any, depth: int = 0, *, property_map: bool = False) -> None:
+        nonlocal property_count, constraint_count, object_count, max_depth
+        max_depth = max(max_depth, depth)
+        if isinstance(value, dict):
+            object_count += 1
+            for key, child in value.items():
+                if not property_map and key not in GEMINI_RESPONSE_JSON_SCHEMA_KEYWORDS:
+                    unsupported.add(str(key))
+                if not property_map and key in constraint_keywords:
+                    constraint_count += 1
+                if key == "properties" and isinstance(child, dict):
+                    property_count += len(child)
+                    visit(child, depth + 1, property_map=True)
+                elif key == "$defs" and isinstance(child, dict):
+                    visit(child, depth + 1, property_map=True)
+                else:
+                    visit(child, depth + 1)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child, depth + 1)
+
+    visit(schema)
+    encoded = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
+    return {
+        "unsupported_keywords": sorted(unsupported),
+        "serialized_bytes": len(encoded.encode("utf-8")),
+        "property_declarations": property_count,
+        "constraint_declarations": constraint_count,
+        "schema_objects": object_count,
+        "maximum_structural_depth": max_depth,
+    }
+
+
+def validate_response_json_schema_for_provider(schema: dict[str, Any]) -> dict[str, Any]:
+    diagnostics = response_json_schema_diagnostics(schema)
+    if diagnostics["unsupported_keywords"]:
+        raise AdsArtError(
+            "responseJsonSchema contiene keywords no admitidos por Gemini: "
+            + ", ".join(diagnostics["unsupported_keywords"])
+        )
+    return diagnostics
 
 
 def gemini_credentials_configured() -> bool:
@@ -200,7 +285,6 @@ def gemini_analysis_schema(max_shots: int) -> dict[str, Any]:
         "required": sorted(_SHOT_REQUIRED),
     }
     return {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Ads Art Gemini commercial analysis",
         "type": "object",
         "additionalProperties": False,
@@ -572,10 +656,13 @@ def _file_state(value: Any) -> str:
     return str(name or state or "").upper()
 
 
-def _retry_upload(client: Any, video_path: Path, attempts: int) -> Any:
+def _retry_upload(
+    client: Any, video_path: Path, attempts: int, attempt_counters: dict[str, int]
+) -> Any:
     last_error: Exception | None = None
     for attempt in range(1, max(1, min(int(attempts), 2)) + 1):
         try:
+            attempt_counters["upload_attempts"] += 1
             return client.files.upload(file=str(video_path))
         except Exception as exc:  # SDK exception types vary by version.
             last_error = exc
@@ -594,11 +681,14 @@ def call_gemini_analysis(
     response_schema: dict[str, Any],
     source_has_audio: bool,
     duration_seconds: float,
+    response_schema_version: str = GEMINI_SCHEMA_VERSION,
     upload_retries: int = 2,
     file_poll_attempts: int = 60,
 ) -> dict[str, Any]:
     """Check the catalog, then upload and execute exactly one model inference."""
 
+    # Must run before key lookup, catalog access or Files API upload.
+    schema_diagnostics = validate_response_json_schema_for_provider(response_schema)
     key = require_gemini_api_key()
     try:
         from google import genai
@@ -620,14 +710,20 @@ def call_gemini_analysis(
     stage = "model_availability"
     stage_started = started
     remote_file_deleted = False
+    attempt_counters = {
+        "model_preflight_attempts": 0,
+        "upload_attempts": 0,
+        "generate_content_attempts": 0,
+    }
     try:
+        attempt_counters["model_preflight_attempts"] += 1
         availability = check_gemini_model_availability(client)
         timings["model_availability_seconds"] = availability["check_seconds"]
 
         stage = "upload"
         stage_started = time.monotonic()
         upload_started = time.monotonic()
-        uploaded = _retry_upload(client, source, upload_retries)
+        uploaded = _retry_upload(client, source, upload_retries, attempt_counters)
         timings["upload_seconds"] = round(time.monotonic() - upload_started, 3)
 
         stage = "file_processing"
@@ -664,6 +760,7 @@ def call_gemini_analysis(
         stage_started = time.monotonic()
         inference_started = stage_started
         # Deliberately one inference call. An exception is uncertain and is not retried.
+        attempt_counters["generate_content_attempts"] += 1
         response = client.models.generate_content(
             model=GEMINI_MODEL_ID,
             contents=contents,
@@ -704,7 +801,8 @@ def call_gemini_analysis(
                 "completed_at": utc_now(),
                 "request_parameters": {
                     **GEMINI_GENERATION_CONFIG,
-                    "response_json_schema_version": GEMINI_SCHEMA_VERSION,
+                    "response_json_schema_version": response_schema_version,
+                    "response_json_schema_metrics": schema_diagnostics,
                     "upload_retries": max(1, min(int(upload_retries), 2)),
                     "file_poll_attempts": max(1, min(int(file_poll_attempts), 120)),
                     "approved_identity_supplied": identity is not None,
@@ -715,6 +813,7 @@ def call_gemini_analysis(
                         else "no audio stream detected"
                     ),
                 },
+                "attempt_counters": attempt_counters,
             },
         }
     except Exception as exc:
@@ -738,6 +837,7 @@ def call_gemini_analysis(
             availability=availability,
             provider_error_type=type(exc).__name__,
             provider_status_code=status_code,
+            attempt_counters=attempt_counters,
         ) from exc
     finally:
         if uploaded is not None and getattr(uploaded, "name", None):

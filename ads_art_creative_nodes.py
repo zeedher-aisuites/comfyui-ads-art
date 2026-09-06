@@ -25,11 +25,15 @@ from .ads_art_core import (
     utc_now,
 )
 from .ads_art_creative import (
+    CREATIVE_EXPANDER_VERSION,
     CREATIVE_PROMPT_VERSION,
+    CREATIVE_PROVIDER_SCHEMA_VERSION,
     CREATIVE_SCHEMA_VERSION,
     build_creative_intelligence_prompt,
     creative_intelligence_schema,
+    creative_intelligence_provider_schema,
     creative_signature,
+    expand_provider_creative_intelligence,
     validate_creative_brief,
     validate_creative_intelligence,
 )
@@ -38,6 +42,7 @@ from .ads_art_gemini import (
     GEMINI_MODEL_ID,
     call_gemini_analysis,
     gemini_credentials_configured,
+    response_json_schema_diagnostics,
     sha256_file,
     stable_fingerprint,
 )
@@ -281,12 +286,30 @@ class AdsArtGeminiCreativeIntelligence:
             )
         started = {
             "schema_version": CREATIVE_SCHEMA_VERSION,
+            "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
+            "expander_version": CREATIVE_EXPANDER_VERSION,
+            "provider_schema_metrics": response_json_schema_diagnostics(
+                creative_intelligence_provider_schema(
+                    brief["min_original_shots"], brief["max_original_shots"]
+                )
+            ),
+            "master_schema_metrics": response_json_schema_diagnostics(
+                creative_intelligence_schema(
+                    brief["min_original_shots"], brief["max_original_shots"]
+                )
+            ),
             "status": "analysis_started",
             "cache_key": cache_key,
             "signature": signature,
             "model": GEMINI_MODEL_ID,
             "started_at": utc_now(),
-            "inference_attempts": int((marker or {}).get("inference_attempts", 0) or 0) + 1,
+            "attempt_counters": {
+                "analysis_attempts": int(((marker or {}).get("attempt_counters") or {}).get("analysis_attempts", 0)) + 1,
+                "model_preflight_attempts": int(((marker or {}).get("attempt_counters") or {}).get("model_preflight_attempts", 0)),
+                "upload_attempts": int(((marker or {}).get("attempt_counters") or {}).get("upload_attempts", 0)),
+                "generate_content_attempts": int(((marker or {}).get("attempt_counters") or {}).get("generate_content_attempts", 0)),
+            },
+            "legacy_inference_attempts": (marker or {}).get("inference_attempts"),
             "automatic_retry": False,
             "api_key_persisted": False,
         }
@@ -297,16 +320,22 @@ class AdsArtGeminiCreativeIntelligence:
                 approved_identity_path=identity_path,
                 system_instruction=system_instruction,
                 prompt=prompt,
-                response_schema=creative_intelligence_schema(
+                response_schema=creative_intelligence_provider_schema(
                     brief["min_original_shots"], brief["max_original_shots"]
                 ),
+                response_schema_version=CREATIVE_PROVIDER_SCHEMA_VERSION,
                 source_has_audio=bool(metadata["has_audio"]),
                 duration_seconds=duration,
                 upload_retries=1,
                 file_poll_attempts=int(file_poll_attempts),
             )
+            for key in ("model_preflight_attempts", "upload_attempts", "generate_content_attempts"):
+                started["attempt_counters"][key] += int(
+                    (call_result.get("provider", {}).get("attempt_counters", {}) or {}).get(key, 0) or 0
+                )
+            provider_response = call_result["response"]
             response = validate_creative_intelligence(
-                call_result["response"],
+                expand_provider_creative_intelligence(provider_response),
                 duration_seconds=duration,
                 target_duration_seconds=brief["target_duration_seconds"],
                 min_shots=brief["min_original_shots"],
@@ -344,11 +373,25 @@ class AdsArtGeminiCreativeIntelligence:
                 "gemini": {
                     "model": GEMINI_MODEL_ID,
                     "prompt_version": CREATIVE_PROMPT_VERSION,
+                    "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
+                    "expander_version": CREATIVE_EXPANDER_VERSION,
                     "generation_config": GEMINI_GENERATION_CONFIG,
+                    "provider_schema_metrics": response_json_schema_diagnostics(
+                        creative_intelligence_provider_schema(
+                            brief["min_original_shots"], brief["max_original_shots"]
+                        )
+                    ),
+                    "master_schema_metrics": response_json_schema_diagnostics(
+                        creative_intelligence_schema(
+                            brief["min_original_shots"], brief["max_original_shots"]
+                        )
+                    ),
                     "cache_key": cache_key,
                     "cache_status": "REMOTE ANALYSIS",
                     "signature": signature,
                     "provider": call_result["provider"],
+                    "provider_response": provider_response,
+                    "attempt_counters": started["attempt_counters"],
                     "timings": call_result["timings"],
                     "usage": call_result["usage"],
                     "cost": call_result["cost_estimate"],
@@ -368,9 +411,12 @@ class AdsArtGeminiCreativeIntelligence:
                 },
             }
         except Exception as exc:
+            remote_attempts = getattr(exc, "attempt_counters", {}) or {}
+            for key in ("model_preflight_attempts", "upload_attempts", "generate_content_attempts"):
+                started["attempt_counters"][key] += int(remote_attempts.get(key, 0) or 0)
             started.update(
                 {
-                    "status": getattr(exc, "outcome_status", "analysis_unknown"),
+                    "status": getattr(exc, "outcome_status", "analysis_failed"),
                     "failed_at": utc_now(),
                     "failure_stage": getattr(exc, "stage", "validation_or_materialization"),
                     "error_type": type(exc).__name__,

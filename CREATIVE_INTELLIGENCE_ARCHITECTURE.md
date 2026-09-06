@@ -1,5 +1,14 @@
 # Ads Art Creative Intelligence Architecture
 
+```text
+Gemini compact provider schema 1.0.0
+  -> deterministic expander 1.0.0
+  -> rich master schema 2.0.0
+```
+
+The provider boundary isolates Gemini schema complexity without changing downstream
+consumers. Facets use closed local allowlists; missing, duplicate or unknown keys fail.
+
 ## Decision
 
 Ads Art v2 is a reference-driven advertising intelligence system. The reference
