@@ -1,11 +1,26 @@
 # Primera prueba remota de Gemini — 2026-09-06
 
+> Registro histórico del intento con Gemini 2.5. La migración autorizada y la primera
+> prueba completada con Gemini 3.6 están documentadas en
+> [`GEMINI_36_TEST_REPORT_2026-09-06.md`](GEMINI_36_TEST_REPORT_2026-09-06.md).
+
 ## Resultado
 
 La instancia habitual de ComfyUI aceptó una única ejecución del nodo
 **Ads Art — Gemini Commercial Analysis**. Google aceptó la subida del comercial y lo
-marcó disponible, pero la llamada de inferencia terminó con `404 NOT_FOUND`: para esta
-cuenta, `models/gemini-2.5-flash` ya no está disponible para usuarios nuevos.
+marcó disponible, pero la llamada de inferencia terminó con este mensaje íntegro, que no
+contiene ningún secreto:
+
+```text
+404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features and improvements. We recommend you to use the Interactions API.', 'status': 'NOT_FOUND'}}
+```
+
+Quedó confirmado por Google el código 404, el estado `NOT_FOUND`, que 2.5 ya no está
+disponible para “new users” y las dos recomendaciones explícitas. Que la política de
+“new users” se aplicó a esta credencial es una inferencia a partir de haber recibido ese
+mensaje; el error no expone por separado la clasificación interna de la cuenta. Tampoco
+confirmaba por sí mismo la disponibilidad de 3.6, su compatibilidad ni que Interactions
+fuera el único método permitido.
 
 Ads Art no sustituyó el modelo, no repitió la inferencia y eliminó el archivo remoto.
 Por tanto, esta ejecución no produjo tomas semánticas, prompts ni frames seleccionados

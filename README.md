@@ -12,7 +12,7 @@ Primera versión funcional de un flujo por tomas para recrear un comercial con u
 - El CLI está autenticado. Ads Art nunca solicita ni registra el token.
 - PyAV está disponible para metadatos, detección visual de tomas y extracción de frames.
 - El análisis semántico opcional usa el SDK oficial Google Gen AI y el identificador
-  exacto `gemini-2.5-flash`. La preparación local no requiere clave ni llamada remota.
+  exacto `gemini-3.6-flash`. La preparación local no requiere clave ni llamada remota.
 
 `ffmpeg` no estaba en `PATH` durante la instalación. El nodo de montaje también busca la copia de CapCut detectada y admite una ruta explícita mediante `ADS_ART_FFMPEG`. El resto del sistema no depende de `ffmpeg`.
 
@@ -25,8 +25,11 @@ propuestas creativas. Los timestamps se validan contra la duración real y el de
 local de cortes; Ads Art examina frames cercanos para evitar transiciones y preferir
 muestras nítidas.
 
-El modelo está fijado a `gemini-2.5-flash`; no existe alias ni fallback. La clave sólo
-se toma de `GEMINI_API_KEY` en el entorno privado que inicia ComfyUI. Consulte
+El modelo está fijado a `gemini-3.6-flash`; no existe alias ni fallback. Antes de subir
+medios, el nodo consulta el descriptor del modelo con la misma credencial y exige que
+anuncie `generateContent`. La llamada usa video estático a 2 FPS,
+`thinking_level=low`, structured output y `max_output_tokens=8192`. La clave sólo se
+toma de `GEMINI_API_KEY` en el entorno privado que inicia ComfyUI. Consulte
 [`GEMINI_INTEGRATION.md`](GEMINI_INTEGRATION.md) para esquema, caché, costes,
 configuración y evidencia documental.
 
@@ -153,15 +156,19 @@ confirmaciones de Higgsfield descritas arriba.
 - `scripts/sync_workflow.py`: actualiza la copia instalada conservando widgets personales.
 - `tests/test_ads_art.py`: restricciones, Gemini local, conocimiento y conexiones del workflow.
 
-## Estado de la prueba remota
+## Estado de las pruebas remotas
 
-La instancia habitual de ComfyUI y la clave privada se probaron con una única ejecución
-remota. Files API aceptó el video, pero `gemini-2.5-flash` respondió `404 NOT_FOUND`
-porque no está disponible para esta cuenta. Ads Art no cambió de modelo, no repitió la
-inferencia y eliminó el archivo remoto. No se lanzó ninguna generación Higgsfield.
+El intento histórico autorizado con `gemini-2.5-flash` permanece separado en
+[`GEMINI_TEST_REPORT_2026-09-06.md`](GEMINI_TEST_REPORT_2026-09-06.md): Files API aceptó
+el video, pero la inferencia respondió `404 NOT_FOUND`; no hubo reintento.
 
-El informe reproducible está en
-[`GEMINI_TEST_REPORT_2026-09-06.md`](GEMINI_TEST_REPORT_2026-09-06.md). Para obtener el
-primer análisis semántico falta verificar y autorizar expresamente otro identificador
-Flash; el proveedor recomendó `gemini-3.6-flash`, pero no se adopta automáticamente.
-El montaje sigue necesitando clips resultantes reales y un `ffmpeg` compatible.
+La migración explícitamente autorizada a `gemini-3.6-flash` se verificó con la misma
+credencial y una única ejecución mediante el nodo de ComfyUI. El análisis terminó,
+propuso tres tomas y extrajo tres frames; todos siguen `approved=false`. El proveedor
+reportó 14,303 tokens de entrada, 1,545 tokens de salida y no desglosó thinking. La
+estimación Standard basada en ese uso fue USD 0.016521; no es un cargo observado. El
+informe reproducible está en
+[`GEMINI_36_TEST_REPORT_2026-09-06.md`](GEMINI_36_TEST_REPORT_2026-09-06.md).
+
+No se lanzó ninguna generación Higgsfield. El montaje sigue necesitando clips
+resultantes reales y un `ffmpeg` compatible.

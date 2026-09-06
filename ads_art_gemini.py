@@ -19,15 +19,15 @@ from typing import Any
 from .ads_art_core import AdsArtError, json_dumps, utc_now
 
 
-GEMINI_MODEL_ID = "gemini-2.5-flash"
-GEMINI_PROMPT_VERSION = "ads_art_gemini_commercial_v1"
+GEMINI_MODEL_ID = "gemini-3.6-flash"
+GEMINI_PROMPT_VERSION = "ads_art_gemini_commercial_v2"
 GEMINI_SCHEMA_VERSION = "1.0.0"
 GEMINI_SDK_REQUIREMENT = "google-genai>=2.22.0,<3"
 GEMINI_GENERATION_CONFIG = {
     "response_mime_type": "application/json",
-    "temperature": 0.2,
     "max_output_tokens": 8192,
-    "thinking_budget": 2048,
+    "thinking_level": "low",
+    "video_processing_mode": "static",
     "video_sampling_fps": 2.0,
 }
 
@@ -36,9 +36,13 @@ GEMINI_GENERATION_CONFIG = {
 # about the account's actual tier or observed invoice.
 GEMINI_STANDARD_PRICING = {
     "currency": "USD",
-    "input_text_image_video_per_million_tokens": 0.30,
-    "input_audio_per_million_tokens": 1.00,
-    "output_including_thinking_per_million_tokens": 2.50,
+    "input_all_modalities_per_million_tokens": 0.75,
+    "output_including_thinking_per_million_tokens": 3.75,
+    "valid_through": "2026-12-31",
+    "scheduled_from_2027_01_01": {
+        "input_all_modalities_per_million_tokens": 1.50,
+        "output_including_thinking_per_million_tokens": 7.50,
+    },
     "source": "https://ai.google.dev/gemini-api/docs/pricing",
     "verified_on": "2026-09-06",
     "estimate_only": True,
@@ -72,6 +76,29 @@ _PROPOSAL_REQUIRED = {
     "unverified_product_details",
 }
 _SEEDANCE_REQUIRED = {"performance", "camera_movement", "rhythm", "continuity"}
+
+
+class GeminiCallError(AdsArtError):
+    """A remote Gemini failure with enough metadata to avoid unsafe retries."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        stage: str,
+        outcome_status: str,
+        timings: dict[str, Any],
+        availability: dict[str, Any] | None,
+        provider_error_type: str,
+        provider_status_code: int | None,
+    ) -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.outcome_status = outcome_status
+        self.timings = timings
+        self.availability = availability
+        self.provider_error_type = provider_error_type
+        self.provider_status_code = provider_status_code
 
 
 def sha256_file(path: str | Path) -> str:
@@ -458,22 +485,25 @@ def estimate_standard_paid_cost(
     else:
         audio_tokens = int(by_modality.get("AUDIO", 0))
         audio_method = "provider_reported_modality"
+        normalized_by_modality = dict(by_modality)
         if audio_included and audio_tokens == 0 and duration_seconds is not None:
             audio_tokens = min(int(input_tokens), round(float(duration_seconds) * 32))
             audio_method = "documented_32_audio_tokens_per_second_fallback"
+            bundled_video_tokens = int(normalized_by_modality.get("VIDEO", 0))
+            normalized_by_modality["VIDEO"] = max(
+                bundled_video_tokens - audio_tokens, 0
+            )
+            normalized_by_modality["AUDIO"] = audio_tokens
         elif not audio_included:
             audio_tokens = 0
             audio_method = "audio_not_included"
-        standard_tokens = max(int(input_tokens) - audio_tokens, 0)
-        standard_cost = (
-            standard_tokens
-            / 1_000_000
-            * GEMINI_STANDARD_PRICING["input_text_image_video_per_million_tokens"]
-        )
+        non_audio_tokens = max(int(input_tokens) - audio_tokens, 0)
+        input_rate = GEMINI_STANDARD_PRICING[
+            "input_all_modalities_per_million_tokens"
+        ]
+        non_audio_cost = non_audio_tokens / 1_000_000 * input_rate
         audio_cost = (
-            audio_tokens
-            / 1_000_000
-            * GEMINI_STANDARD_PRICING["input_audio_per_million_tokens"]
+            audio_tokens / 1_000_000 * input_rate
         )
         output_tokens = int(candidate_tokens) + int(thoughts_tokens)
         output_cost = (
@@ -481,13 +511,16 @@ def estimate_standard_paid_cost(
             / 1_000_000
             * GEMINI_STANDARD_PRICING["output_including_thinking_per_million_tokens"]
         )
-        amount = round(standard_cost + audio_cost + output_cost, 9)
+        amount = round(non_audio_cost + audio_cost + output_cost, 9)
         input_breakdown = {
             "provider_reported_by_modality": by_modality,
-            "text_image_video_tokens_billed_at_standard_input_rate": standard_tokens,
-            "audio_tokens_billed_at_audio_input_rate": audio_tokens,
+            "normalized_input_tokens_by_modality": normalized_by_modality,
+            "non_audio_input_tokens": non_audio_tokens,
+            "audio_input_tokens": audio_tokens,
             "audio_token_source": audio_method,
-            "text_image_video_cost_usd": round(standard_cost, 9),
+            "all_input_modalities_share_same_rate": True,
+            "input_rate_per_million_tokens_usd": input_rate,
+            "non_audio_input_cost_usd": round(non_audio_cost, 9),
             "audio_cost_usd": round(audio_cost, 9),
             "output_tokens_including_thinking": output_tokens,
             "output_cost_usd": round(output_cost, 9),
@@ -498,6 +531,38 @@ def estimate_standard_paid_cost(
         "observed_charge_usd": None,
         "input_breakdown": input_breakdown,
         "pricing": GEMINI_STANDARD_PRICING,
+    }
+
+
+def check_gemini_model_availability(client: Any) -> dict[str, Any]:
+    """Verify the exact model and inference action without uploading user media."""
+
+    started = time.monotonic()
+    descriptor = client.models.get(model=GEMINI_MODEL_ID)
+    name = str(getattr(descriptor, "name", "") or "")
+    normalized_name = name.removeprefix("models/")
+    actions = [str(item) for item in (getattr(descriptor, "supported_actions", None) or [])]
+    if normalized_name != GEMINI_MODEL_ID:
+        raise AdsArtError(
+            f"El catálogo devolvió {name or 'un modelo sin nombre'} en vez de "
+            f"models/{GEMINI_MODEL_ID}."
+        )
+    if "generateContent" not in actions:
+        raise AdsArtError(
+            f"{GEMINI_MODEL_ID} existe, pero el catálogo no anuncia generateContent. "
+            "El video no se subirá."
+        )
+    return {
+        "available": True,
+        "requested_model": GEMINI_MODEL_ID,
+        "catalog_name": name,
+        "required_inference_action": "generateContent",
+        "supported_actions": actions,
+        "input_token_limit": getattr(descriptor, "input_token_limit", None),
+        "output_token_limit": getattr(descriptor, "output_token_limit", None),
+        "checked_at": utc_now(),
+        "check_seconds": round(time.monotonic() - started, 3),
+        "media_uploaded_during_check": False,
     }
 
 
@@ -532,7 +597,7 @@ def call_gemini_analysis(
     upload_retries: int = 2,
     file_poll_attempts: int = 60,
 ) -> dict[str, Any]:
-    """Execute exactly one model inference after a bounded file upload/poll."""
+    """Check the catalog, then upload and execute exactly one model inference."""
 
     key = require_gemini_api_key()
     try:
@@ -550,13 +615,23 @@ def call_gemini_analysis(
     uploaded = None
     started_at = utc_now()
     started = time.monotonic()
-    timings: dict[str, float] = {}
+    timings: dict[str, Any] = {}
+    availability: dict[str, Any] | None = None
+    stage = "model_availability"
+    stage_started = started
     remote_file_deleted = False
     try:
+        availability = check_gemini_model_availability(client)
+        timings["model_availability_seconds"] = availability["check_seconds"]
+
+        stage = "upload"
+        stage_started = time.monotonic()
         upload_started = time.monotonic()
         uploaded = _retry_upload(client, source, upload_retries)
         timings["upload_seconds"] = round(time.monotonic() - upload_started, 3)
 
+        stage = "file_processing"
+        stage_started = time.monotonic()
         processing_started = time.monotonic()
         for _ in range(max(1, min(int(file_poll_attempts), 120))):
             state = _file_state(uploaded)
@@ -585,7 +660,9 @@ def call_gemini_analysis(
             contents.append(types.Part.from_bytes(data=identity.read_bytes(), mime_type=mime_type))
         contents.append(prompt)
 
-        inference_started = time.monotonic()
+        stage = "inference"
+        stage_started = time.monotonic()
+        inference_started = stage_started
         # Deliberately one inference call. An exception is uncertain and is not retried.
         response = client.models.generate_content(
             model=GEMINI_MODEL_ID,
@@ -594,10 +671,9 @@ def call_gemini_analysis(
                 "system_instruction": system_instruction,
                 "response_mime_type": GEMINI_GENERATION_CONFIG["response_mime_type"],
                 "response_json_schema": response_schema,
-                "temperature": GEMINI_GENERATION_CONFIG["temperature"],
                 "max_output_tokens": GEMINI_GENERATION_CONFIG["max_output_tokens"],
                 "thinking_config": {
-                    "thinking_budget": GEMINI_GENERATION_CONFIG["thinking_budget"]
+                    "thinking_level": GEMINI_GENERATION_CONFIG["thinking_level"]
                 },
             },
         )
@@ -623,6 +699,7 @@ def call_gemini_analysis(
                 "model_requested": GEMINI_MODEL_ID,
                 "model_version_reported": getattr(response, "model_version", None),
                 "response_id": getattr(response, "response_id", None),
+                "availability_preflight": availability,
                 "started_at": started_at,
                 "completed_at": utc_now(),
                 "request_parameters": {
@@ -640,6 +717,28 @@ def call_gemini_analysis(
                 },
             },
         }
+    except Exception as exc:
+        status_code = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+        try:
+            status_code = int(status_code) if status_code is not None else None
+        except (TypeError, ValueError):
+            status_code = None
+        stage_key = f"{stage}_seconds"
+        if stage_key not in timings:
+            timings[stage_key] = round(time.monotonic() - stage_started, 3)
+        timings["total_remote_seconds"] = round(time.monotonic() - started, 3)
+        definitive = stage != "inference" or (
+            status_code is not None and 400 <= status_code < 500
+        )
+        raise GeminiCallError(
+            str(exc),
+            stage=stage,
+            outcome_status="analysis_failed" if definitive else "analysis_unknown",
+            timings=timings,
+            availability=availability,
+            provider_error_type=type(exc).__name__,
+            provider_status_code=status_code,
+        ) from exc
     finally:
         if uploaded is not None and getattr(uploaded, "name", None):
             try:

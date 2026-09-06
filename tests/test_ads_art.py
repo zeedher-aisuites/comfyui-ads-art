@@ -251,7 +251,7 @@ class AdsArtTests(unittest.TestCase):
         self.assertTrue(all(path.is_file() for path in extracted))
 
     def test_gemini_model_and_schema_are_exact_and_bounded(self):
-        self.assertEqual(GEMINI.GEMINI_MODEL_ID, "gemini-2.5-flash")
+        self.assertEqual(GEMINI.GEMINI_MODEL_ID, "gemini-3.6-flash")
         schema = GEMINI.gemini_analysis_schema(3)
         self.assertEqual(schema["properties"]["shots"]["maxItems"], 3)
         shot_properties = schema["properties"]["shots"]["items"]["properties"]
@@ -328,11 +328,11 @@ class AdsArtTests(unittest.TestCase):
                 "thoughts_token_count": 0,
             }
         )
-        self.assertEqual(cost["amount_usd"], 2.8)
+        self.assertEqual(cost["amount_usd"], 4.5)
         self.assertIsNone(cost["observed_charge_usd"])
         self.assertTrue(cost["pricing"]["estimate_only"])
 
-    def test_gemini_audio_tokens_use_separate_rate(self):
+    def test_gemini_audio_tokens_are_separate_at_shared_input_rate(self):
         cost = GEMINI.estimate_standard_paid_cost(
             {
                 "prompt_token_count": 2_000,
@@ -347,17 +347,61 @@ class AdsArtTests(unittest.TestCase):
             duration_seconds=40.0,
         )
         breakdown = cost["input_breakdown"]
-        self.assertEqual(breakdown["audio_tokens_billed_at_audio_input_rate"], 1_280)
-        self.assertEqual(
-            breakdown["text_image_video_tokens_billed_at_standard_input_rate"], 720
-        )
+        self.assertEqual(breakdown["audio_input_tokens"], 1_280)
+        self.assertEqual(breakdown["non_audio_input_tokens"], 720)
+        self.assertTrue(breakdown["all_input_modalities_share_same_rate"])
         self.assertEqual(breakdown["audio_token_source"], "provider_reported_modality")
-        self.assertAlmostEqual(cost["amount_usd"], 0.001871)
+        self.assertAlmostEqual(cost["amount_usd"], 0.0020625)
+
+    def test_gemini_audio_fallback_reclassifies_provider_video_bundle(self):
+        cost = GEMINI.estimate_standard_paid_cost(
+            {
+                "prompt_token_count": 14_303,
+                "candidates_token_count": 1_545,
+                "thoughts_token_count": 0,
+                "prompt_tokens_details": [
+                    {"modality": "IMAGE", "token_count": 1_110},
+                    {"modality": "TEXT", "token_count": 6_914},
+                    {"modality": "VIDEO", "token_count": 6_279},
+                ],
+            },
+            audio_included=True,
+            duration_seconds=40.0,
+        )
+        normalized = cost["input_breakdown"]["normalized_input_tokens_by_modality"]
+        self.assertEqual(normalized["AUDIO"], 1_280)
+        self.assertEqual(normalized["VIDEO"], 4_999)
+        self.assertEqual(
+            cost["input_breakdown"]["audio_token_source"],
+            "documented_32_audio_tokens_per_second_fallback",
+        )
+        self.assertAlmostEqual(cost["amount_usd"], 0.016521)
 
     def test_gemini_first_run_limits_are_explicit(self):
         self.assertEqual(GEMINI.GEMINI_GENERATION_CONFIG["video_sampling_fps"], 2.0)
-        self.assertEqual(GEMINI.GEMINI_GENERATION_CONFIG["thinking_budget"], 2048)
+        self.assertEqual(GEMINI.GEMINI_GENERATION_CONFIG["thinking_level"], "low")
         self.assertEqual(GEMINI.GEMINI_GENERATION_CONFIG["max_output_tokens"], 8192)
+        self.assertNotIn("temperature", GEMINI.GEMINI_GENERATION_CONFIG)
+
+    def test_gemini_availability_preflight_requires_generate_content(self):
+        descriptor = type(
+            "Descriptor",
+            (),
+            {
+                "name": "models/gemini-3.6-flash",
+                "supported_actions": ["generateContent", "countTokens"],
+                "input_token_limit": 1_048_576,
+                "output_token_limit": 65_536,
+            },
+        )()
+        models = mock.Mock()
+        models.get.return_value = descriptor
+        result = GEMINI.check_gemini_model_availability(
+            type("Client", (), {"models": models})()
+        )
+        self.assertTrue(result["available"])
+        self.assertFalse(result["media_uploaded_during_check"])
+        self.assertEqual(result["required_inference_action"], "generateContent")
 
     def test_gemini_prepare_local_only_makes_zero_remote_calls(self):
         video_path = self.make_synthetic_video("gemini_preflight.mp4")
@@ -379,7 +423,7 @@ class AdsArtTests(unittest.TestCase):
             output = NODES.AdsArtGeminiAnalyzeCommercial().analyze(
                 json.dumps(project),
                 str(video_path),
-                "gemini-2.5-flash",
+                "gemini-3.6-flash",
                 "faithful_reference",
                 3,
                 0.1,
@@ -515,7 +559,9 @@ class AdsArtTests(unittest.TestCase):
         identity_after = next(item for item in merged["nodes"] if item["id"] == 7)
         gemini_after = next(item for item in merged["nodes"] if item["id"] == 23)
         self.assertEqual(identity_after["widgets_values"][0], "Private identity notes that must survive.")
+        self.assertEqual(gemini_after["widgets_values"][1], "gemini-3.6-flash")
         self.assertFalse(gemini_after["widgets_values"][8])
+        self.assertEqual(gemini_after["widgets_values"][11], 1)
         self.assertEqual(gemini_after["mode"], 0)
         self.assertTrue(
             all(
@@ -540,6 +586,9 @@ class AdsArtTests(unittest.TestCase):
         submit_nodes = [node for node in nodes.values() if node["type"] == "AdsArtSubmitJob"]
         self.assertEqual(len(submit_nodes), 3)
         self.assertTrue(all(node["widgets_values"][0] is False for node in submit_nodes))
+        gemini = next(node for node in nodes.values() if node["type"] == "AdsArtGeminiAnalyzeCommercial")
+        self.assertEqual(gemini["widgets_values"][1], "gemini-3.6-flash")
+        self.assertEqual(gemini["widgets_values"][11], 1)
 
         for node in nodes.values():
             if node["type"] not in PACKAGE.NODE_CLASS_MAPPINGS:

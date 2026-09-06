@@ -1,20 +1,18 @@
-# Informe de implementación — Ads Art Gemini v1
+# Informe de implementación — Ads Art Gemini 3.6
 
 Fecha de verificación: 2026-09-06
 
 ## Resultado
 
-Ads Art incorpora una primera integración funcional con Gemini para preparar el análisis
-del comercial, proponer hasta el número configurado de tomas, generar borradores de
-prompts de frame y movimiento y conectarlos con los planificadores existentes. La
-implementación completó el preflight local y una única prueba remota autorizada. Files
-API aceptó el comercial, pero Google rechazó la inferencia con `404 NOT_FOUND` porque
-`gemini-2.5-flash` ya no está disponible para esta cuenta. No hubo respuesta semántica,
-reintento ni generaciones Higgsfield.
+Ads Art incorpora una integración funcional con Gemini para analizar el comercial,
+proponer hasta el número configurado de tomas, generar borradores de prompts de frame y
+movimiento y conectarlos con los planificadores existentes. La migración explícita está
+fijada a `gemini-3.6-flash`; no hay alias, sustitución ni fallback silencioso.
 
-El modelo está fijado a `gemini-2.5-flash`. La documentación oficial vigente declara
-entradas de video e imagen y structured outputs para este identificador. No hay alias,
-sustitución ni fallback silencioso.
+El intento anterior con `gemini-2.5-flash` se conserva como fallo histórico separado.
+Después de comprobar el catálogo con la misma credencial, Ads Art ejecutó una sola
+inferencia autorizada de `gemini-3.6-flash` mediante el nodo de ComfyUI. Terminó con tres
+tomas y tres frames locales, sin reintentos y sin generaciones Higgsfield.
 
 ## Implementado
 
@@ -22,7 +20,7 @@ sustitución ni fallback silencioso.
   una llamada remota.
 - Autenticación exclusiva con `GEMINI_API_KEY` del entorno; no existe campo de clave en
   el nodo ni persistencia del secreto.
-- Prompt versionado `ads_art_gemini_commercial_v1` con los cuatro controles del proyecto,
+- Prompt versionado `ads_art_gemini_commercial_v2` con los cuatro controles del proyecto,
   catálogo completo de 31 conceptos, evidencia del detector local, máximo de tomas y
   modo fiel/creativo.
 - Esquema JSON estricto que separa `observed` de `proposal` y exige timestamps,
@@ -42,9 +40,15 @@ sustitución ni fallback silencioso.
 - Campos posteriores a aprobación en el planificador Seedance para describir el frame
   recreado real y ajustar actuación/movimiento antes de preparar video.
 - Caché por SHA-256 y configuración completa. Una coincidencia terminada se reutiliza;
-  una llamada incierta queda bloqueada para impedir duplicados.
-- Una sola inferencia por intento confirmado, dos intentos máximos de subida, sondeo
-  acotado del archivo y eliminación best effort del archivo remoto.
+  una llamada incierta queda bloqueada para impedir duplicados. El modelo exacto forma
+  parte de la huella, de modo que el intento 2.5 no colisiona con el resultado 3.6.
+- Preflight remoto del descriptor exacto mediante `models.get`; exige
+  `models/gemini-3.6-flash` y la acción `generateContent` antes de subir el video.
+- Configuración específica de Gemini 3.6: structured output, video estático a 2 FPS,
+  `thinking_level=low` y `max_output_tokens=8192`; no conserva `thinking_budget`,
+  `temperature` ni precios del modelo anterior.
+- Una sola inferencia por intento confirmado, un intento de subida, sondeo acotado del
+  archivo y eliminación best effort del archivo remoto.
 - Registro privado de modelo, versiones, parámetros, prompt, respuesta, timings, uso de
   tokens, coste estimado y verificaciones locales.
 - Workflow portable actualizado y sincronizador que preserva widgets personales al
@@ -67,79 +71,81 @@ sustitución ni fallback silencioso.
 ## Pruebas ejecutadas realmente
 
 - Compilación de `ads_art_core.py`, `ads_art_gemini.py` y `ads_art_nodes.py`.
-- Instalación local de `google-genai==2.22.0` en `venv_comfy` y comprobación, sin red
-  de inferencia, de las firmas `files.upload/get/delete`, `models.generate_content`,
-  `response_json_schema` y `Part.from_bytes`.
-- 28 pruebas automatizadas: políticas de
-  imagen/video, anti-duplicado, recuperación, detector local, modelo y esquema Gemini,
-  timestamps, coste, clave ausente, preflight con cero llamadas y persistencia de
-  overrides, actualización del prompt Seedance y sincronización segura del workflow.
+- SDK `google-genai==2.22.0` en `venv_comfy`; verificación de las firmas
+  `files.upload/get/delete`, `models.get`, `models.generate_content`,
+  `response_json_schema`, `ThinkingConfig` y `VideoMetadata`.
+- 30 pruebas automatizadas: políticas de imagen/video, anti-duplicado, recuperación,
+  detector local, modelo y esquema Gemini, timestamps, configuración 3.6, preflight de
+  catálogo, coste y separación de audio, clave ausente, preflight local sin llamadas,
+  persistencia de overrides, actualización Seedance y sincronización segura.
 - Fixture sintético de dos planos: corte detectado y frames extraídos.
 - Preflight real del comercial Dior copiado a `ComfyUI/input`:
 
-  - archivo de 11,081,299 bytes; SHA-256 idéntico a la fuente conservada en Downloads;
-  - duración 40.0 s, 1280 × 720;
+  - 11,081,299 bytes, duración 40.0 s y 1280 × 720;
+  - SHA-256 idéntico a la fuente conservada;
   - 17 cortes locales detectados;
-  - máximo de tres muestras, seleccionadas a 1.72 s, 20.60 s y 39.28 s;
-  - los tres archivos se inspeccionaron visualmente y quedaron `approved=false`;
-  - estado `prepared_not_called`, `remote_calls=0`.
+  - máximo de tres propuestas;
+  - estado local `prepared_not_called`, `remote_calls=0`.
 
-- La copia de Madame X en `ComfyUI/input` coincide por SHA-256 con el resultado aprobado
-  conservado en el proyecto.
-- El workflow instalado preserva exactamente las `identity_notes` y los IDs de request/
-  job de la generación de identidad anterior.
-- La instancia habitual detectó `GEMINI_API_KEY` sin leer ni registrar su valor. La
-  subida autenticada a Files API respondió 200, por lo que la clave funcionó para esa
-  operación; la inferencia falló después por disponibilidad del modelo, no por
-  autenticación.
-- Una sola ejecución remota mediante el nodo 23 de ComfyUI:
+- La copia de Madame X coincide por SHA-256 con el resultado aprobado conservado en el
+  proyecto. El workflow preserva exactamente sus `identity_notes` y los IDs de la
+  generación de identidad anterior.
+- La instancia habitual detectó `GEMINI_API_KEY` sin leer ni registrar su valor.
+- Intento histórico mediante el nodo 23 con `gemini-2.5-flash`:
 
   - ID `b7007d5e-660b-47a4-941b-412fd917c60c`;
-  - preflight local 11.258 s, etapa remota 21.838 s y total 33.195 s;
-  - subida y procesamiento aceptados, un intento `generateContent`, respuesta 404;
-  - archivo remoto eliminado y `automatic_retry_performed=false`;
-  - sin `usageMetadata`, tokens, coste estimado ni cargo observado;
-  - estado conservador `analysis_unknown`, que bloquea duplicados.
+  - Files API aceptó el video, pero un único `generateContent` respondió 404;
+  - archivo remoto eliminado, sin uso reportado ni reintento;
+  - estado conservador separado `analysis_unknown`.
+
+- Consulta previa del catálogo, con la misma credencial y configuración que ComfyUI:
+
+  - `models/gemini-3.6-flash` disponible;
+  - acciones `generateContent`, `countTokens`, `createCachedContent` y
+    `batchGenerateContent`;
+  - límites de 1,048,576 tokens de entrada y 65,536 de salida;
+  - la comprobación no subió ningún medio.
+
+- Una sola ejecución real con `gemini-3.6-flash` mediante el nodo 23:
+
+  - ID de prompt ComfyUI `69e8cc9a-0384-474f-b495-533d5825b9f2`;
+  - disponibilidad 0.484 s, subida 11.195 s, procesamiento 6.654 s e inferencia
+    22.746 s;
+  - etapa remota total 41.095 s, extracción 6.070 s y nodo completo 63.179 s;
+  - 14,303 tokens de entrada, 1,545 de salida y thinking no desglosado por el
+    proveedor;
+  - tres tomas/frames extraídos a 8.2 s, 24.8 s y 34.0 s;
+  - archivo remoto eliminado, sin reintento y todas las aprobaciones en `false`.
 
 ## Costes y medición
 
-La tarifa Standard documentada para Gemini 2.5 Flash usada por esta integración es USD
-0.30/M tokens de entrada de texto/imagen/video y USD 2.50/M tokens de salida, incluido
-thinking, verificada el 2026-09-06. La estimación se calcula únicamente tras recibir uso
-reportado; antes de una llamada su valor es `null`. `observed_charge_usd` permanece
-separado y `null` porque una respuesta de inferencia no prueba el cargo de facturación.
+La tarifa Standard documentada para Gemini 3.6 Flash, vigente hasta 2026-12-31, es USD
+0.75/M tokens de entrada para todas las modalidades y USD 3.75/M tokens de salida,
+incluido thinking. La estimación se calcula únicamente tras recibir uso reportado;
+`observed_charge_usd` permanece separado y `null` porque una respuesta de inferencia no
+prueba el cargo de facturación.
 
-La primera llamada no devolvió `usageMetadata` porque el modelo fue rechazado antes de
-generar contenido. Tokens de entrada, audio, salida y thinking son `null`; coste
-estimado y cargo observado también son `null`. La pista de audio se incluye en el
-análisis multimodal, pero el cálculo implementado la separa a USD 1.00/M tokens y no la
-contabiliza como video.
+El proveedor reportó 14,303 tokens de entrada. Conservamos su desglose original
+(`IMAGE=1110`, `TEXT=6914`, `VIDEO=6279`) y, para no contabilizar audio como video,
+registramos aparte la estimación documentada de 32 tokens de audio/s: 1,280 tokens de
+audio y 4,999 de video visual. Audio y video usan la misma tarifa de entrada del modelo.
+Con 1,545 tokens de salida, el coste estimado total es USD 0.016521. Thinking no fue
+desglosado; no se afirma que sea cero. No hay cargo observado.
 
 ## Qué falta probar
 
-- Seleccionar y autorizar expresamente otro modelo Flash disponible para esta cuenta.
-  La respuesta del proveedor recomendó `gemini-3.6-flash`; antes de adoptarlo deben
-  verificarse documentación, soporte de video/imagen/audio, structured output, thinking,
-  límites y tarifas. No se hará sustitución silenciosa.
-- Ejecutar después una nueva llamada confirmada, inspeccionar el JSON real, tokens,
-  tiempos y versión de modelo reportada, y revisar manualmente las propuestas.
-- Aprobar un frame y comprobar el ciclo completo Gemini → planificador → Nano Banana Pro
-  sin enviar todavía, seguido más tarde por una generación autorizada explícitamente.
-- La calidad semántica, los prompts reales y el coste real no se afirman como probados.
-- Ningún envío o consulta Higgsfield se probó en esta etapa; sus registros históricos se
-  conservaron sin tocarlos.
+- Revisión visual humana y eventual aprobación de una de las tres propuestas. La toma 1
+  tiene gafas oscuras y no cumple completamente la preferencia de rostro despejado; se
+  dejó marcada para revisión, no aprobada.
+- Aprobar un frame y comprobar el ciclo Gemini → planificador → Nano Banana Pro sólo
+  cuando exista una autorización de generación independiente.
+- El débito real de facturación: USD 0.016521 es una estimación derivada de tokens, no un
+  cargo observado.
+- Ningún envío o consulta Higgsfield se ejecutó en esta migración; sus registros
+  históricos se conservaron sin tocarlos.
 
-## Siguiente análisis real, cuando se autorice otro modelo
+## Reutilización segura
 
-1. Verificar `google-genai==2.22.0` en `venv_comfy` y definir `GEMINI_API_KEY` sólo en
-   la terminal privada que iniciará ComfyUI.
-2. Reiniciar ComfyUI y abrir el workflow instalado de Ads Art.
-3. Verificar en **Gemini Commercial Analysis**: Dior, Madame X conectada, el nuevo
-   identificador exacto previamente documentado y autorizado, `faithful_reference`,
-   máximo `3`, reutilización activa y reintento incierto desactivado.
-4. Ejecutar una vez con `confirm_gemini_analysis=false` para revisar el preflight local.
-5. Cambiar únicamente `confirm_gemini_analysis=true` y ejecutar el nodo una vez.
-6. Devolver inmediatamente la confirmación a `false`. Si el estado queda incierto, no
-   repetir: revisar `analysis/gemini/inflight/` y decidir manualmente.
-7. Revisar los tres frames, observaciones, motivos, prompts e incertidumbres; no aprobar
-   visualmente ninguno por defecto.
+Con `reuse_matching_analysis=true`, ejecutar la rama con confirmación desactivada muestra
+el resultado ya validado sin subir medios ni generar otro cargo. Si una llamada futura
+queda incierta, no se repite automáticamente: se revisa primero el registro privado.

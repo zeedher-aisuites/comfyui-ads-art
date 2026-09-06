@@ -105,9 +105,11 @@ def merge_workflow(
         if node.get("type") == "AdsArtSubmitJob":
             _set_widget(node, "confirm_paid_submission", False)
         if node.get("type") == "AdsArtGeminiAnalyzeCommercial":
+            _set_widget(node, "model", "gemini-3.6-flash")
             _set_widget(node, "confirm_gemini_analysis", False)
             _set_widget(node, "allow_retry_after_unknown", False)
             _set_widget(node, "max_shots", 3)
+            _set_widget(node, "upload_retries", 1)
             if identity_image:
                 _set_widget(node, "identity_approved", True)
         if int(node["id"]) == 9 and identity_image:

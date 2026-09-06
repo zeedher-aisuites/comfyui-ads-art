@@ -530,7 +530,7 @@
       ],
       "title": "2 — Gemini plan (local preflight; remote OFF)",
       "properties": {"Node name for S&R": "AdsArtGeminiAnalyzeCommercial"},
-      "widgets_values": ["J' ADORE - DIOR.mp4", "gemini-2.5-flash", "faithful_reference", 3, 0.22, 0.5, 6.0, false, false, true, false, 2, 60],
+      "widgets_values": ["J' ADORE - DIOR.mp4", "gemini-3.6-flash", "faithful_reference", 3, 0.22, 0.5, 6.0, false, false, true, false, 1, 60],
       "color": "#243744",
       "bgcolor": "#31536d"
     },

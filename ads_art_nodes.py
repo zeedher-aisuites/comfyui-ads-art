@@ -580,7 +580,7 @@ class AdsArtGeminiAnalyzeCommercial:
                 "confirm_gemini_analysis": ("BOOLEAN", {"default": False}),
                 "reuse_matching_analysis": ("BOOLEAN", {"default": True}),
                 "allow_retry_after_unknown": ("BOOLEAN", {"default": False}),
-                "upload_retries": ("INT", {"default": 2, "min": 1, "max": 2}),
+                "upload_retries": ("INT", {"default": 1, "min": 1, "max": 2}),
                 "file_poll_attempts": ("INT", {"default": 60, "min": 1, "max": 120}),
             },
             "optional": {"approved_identity": ("IMAGE",)},
@@ -668,7 +668,8 @@ class AdsArtGeminiAnalyzeCommercial:
                     if metadata["has_audio"]
                     else "no audio stream detected"
                 ),
-                "audio_pricing_is_separate_from_video": True,
+                "audio_usage_reported_separately_from_video": True,
+                "audio_pricing_rate": "same Gemini 3.6 Standard input-token rate",
             },
             "detector": {
                 "type": "local_mean_absolute_visual_change",
@@ -743,11 +744,12 @@ class AdsArtGeminiAnalyzeCommercial:
         marker = store.read_json(marker_relative)
         if (
             marker
-            and marker.get("status") in {"analysis_started", "analysis_unknown"}
+            and marker.get("status")
+            in {"analysis_started", "analysis_unknown", "analysis_failed"}
             and not bool(allow_retry_after_unknown)
         ):
             raise AdsArtError(
-                "Ya existe un análisis Gemini iniciado o incierto para esta misma huella. "
+                "Ya existe un análisis Gemini iniciado, fallido o incierto para esta misma huella. "
                 "No se repetirá automáticamente. Revise su registro y active "
                 "allow_retry_after_unknown sólo tras confirmar que no existe respuesta reutilizable."
             )
@@ -805,12 +807,30 @@ class AdsArtGeminiAnalyzeCommercial:
                 time.monotonic() - node_started, 3
             )
         except Exception as exc:
+            failure_timings = dict(getattr(exc, "timings", {}) or {})
+            failure_timings["local_preflight_seconds"] = local_preflight_seconds
+            failure_timings["total_node_seconds"] = round(
+                time.monotonic() - node_started, 3
+            )
             started_marker.update(
                 {
-                    "status": "analysis_unknown",
+                    "status": getattr(exc, "outcome_status", "analysis_unknown"),
                     "failed_at": utc_now(),
                     "error_type": type(exc).__name__,
                     "error": str(exc),
+                    "failure_stage": getattr(exc, "stage", "post_inference_processing"),
+                    "provider_error_type": getattr(
+                        exc, "provider_error_type", type(exc).__name__
+                    ),
+                    "provider_status_code": getattr(exc, "provider_status_code", None),
+                    "availability_preflight": getattr(exc, "availability", None),
+                    "timings": failure_timings,
+                    "usage": None,
+                    "cost": {
+                        "kind": "unavailable_without_usage_metadata",
+                        "amount_usd": None,
+                        "observed_charge_usd": None,
+                    },
                     "automatic_retry_performed": False,
                 }
             )
@@ -922,6 +942,10 @@ class AdsArtGeminiAnalyzeCommercial:
                 "confirm_gemini_analysis": False,
                 "remote_calls": 0,
                 "identity_supplied": identity_was_supplied,
+                "availability_preflight": {
+                    "status": "not_checked_without_remote_confirmation",
+                    "media_uploaded": False,
+                },
                 "system_instruction": system_instruction,
                 "prompt": prompt,
                 "generation_config": GEMINI_GENERATION_CONFIG,
@@ -1055,7 +1079,7 @@ class AdsArtGeminiAnalyzeCommercial:
                 "Gemini video: "
                 f"{GEMINI_GENERATION_CONFIG['video_sampling_fps']:.1f} FPS | "
                 f"max_output_tokens={GEMINI_GENERATION_CONFIG['max_output_tokens']} | "
-                f"thinking_budget={GEMINI_GENERATION_CONFIG['thinking_budget']}"
+                f"thinking_level={GEMINI_GENERATION_CONFIG['thinking_level']}"
             ),
         ]
         if status == "PREPARED_NOT_CALLED":
