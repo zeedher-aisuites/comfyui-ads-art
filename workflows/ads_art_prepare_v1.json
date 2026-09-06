@@ -1,0 +1,527 @@
+{
+  "id": "ads-art-prepare-v1",
+  "revision": 0,
+  "last_node_id": 21,
+  "last_link_id": 22,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AdsArtProjectConfig",
+      "pos": [-1500, -360],
+      "size": [430, 520],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {"name": "project_id", "type": "STRING", "widget": {"name": "project_id"}, "link": null},
+        {"name": "positive_prompt", "type": "STRING", "widget": {"name": "positive_prompt"}, "link": null},
+        {"name": "restrictive_prompt", "type": "STRING", "widget": {"name": "restrictive_prompt"}, "link": null},
+        {"name": "negative_prompt", "type": "STRING", "widget": {"name": "negative_prompt"}, "link": null},
+        {"name": "creative_prompt", "type": "STRING", "widget": {"name": "creative_prompt"}, "link": null},
+        {"name": "video_aspect_ratio", "type": "COMBO", "widget": {"name": "video_aspect_ratio"}, "link": null},
+        {"name": "video_resolution", "type": "COMBO", "widget": {"name": "video_resolution"}, "link": null},
+        {"name": "seedance_generate_audio", "type": "BOOLEAN", "widget": {"name": "seedance_generate_audio"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "project", "type": "ADS_ART_PROJECT", "slot_index": 0, "links": [1, 2, 6, 11, 15, 19]},
+        {"name": "validation_report", "type": "STRING", "slot_index": 1, "links": []}
+      ],
+      "title": "1 — Project controls & contradiction gate",
+      "properties": {"Node name for S&R": "AdsArtProjectConfig"},
+      "widgets_values": ["ads_art_project_001", "", "", "", "", "auto", "1080p", false],
+      "color": "#3b2d46",
+      "bgcolor": "#563e69"
+    },
+    {
+      "id": 2,
+      "type": "AdsArtHiggsfieldStatus",
+      "pos": [-1500, 220],
+      "size": [360, 90],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [{"name": "refresh", "type": "BOOLEAN", "widget": {"name": "refresh"}, "link": null}],
+      "outputs": [{"name": "status", "type": "STRING", "slot_index": 0, "links": []}],
+      "title": "0 — Read-only Higgsfield status/catalog",
+      "properties": {"Node name for S&R": "AdsArtHiggsfieldStatus"},
+      "widgets_values": [true],
+      "color": "#243744",
+      "bgcolor": "#31536d"
+    },
+    {
+      "id": 3,
+      "type": "AdsArtAnalyzeCommercial",
+      "pos": [-960, -360],
+      "size": [410, 340],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "project", "type": "ADS_ART_PROJECT", "link": 1},
+        {"name": "video_path", "type": "STRING", "widget": {"name": "video_path"}, "link": null},
+        {"name": "scene_threshold", "type": "FLOAT", "widget": {"name": "scene_threshold"}, "link": null},
+        {"name": "min_shot_seconds", "type": "FLOAT", "widget": {"name": "min_shot_seconds"}, "link": null},
+        {"name": "analysis_fps", "type": "FLOAT", "widget": {"name": "analysis_fps"}, "link": null},
+        {"name": "max_shots", "type": "INT", "widget": {"name": "max_shots"}, "link": null},
+        {"name": "manual_semantic_analysis", "type": "STRING", "widget": {"name": "manual_semantic_analysis"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "analysis", "type": "ADS_ART_ANALYSIS", "slot_index": 0, "links": [5]},
+        {"name": "representative_frames", "type": "IMAGE", "slot_index": 1, "links": [16]},
+        {"name": "report", "type": "STRING", "slot_index": 2, "links": []}
+      ],
+      "title": "2 — Analyze commercial locally",
+      "properties": {"Node name for S&R": "AdsArtAnalyzeCommercial"},
+      "widgets_values": ["", 0.22, 0.5, 6.0, 24, ""],
+      "color": "#243744",
+      "bgcolor": "#31536d"
+    },
+    {
+      "id": 4,
+      "type": "AdsArtReviewFrame",
+      "pos": [-430, -360],
+      "size": [390, 260],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "analysis", "type": "ADS_ART_ANALYSIS", "link": 5},
+        {"name": "shot_number", "type": "INT", "widget": {"name": "shot_number"}, "link": null},
+        {"name": "approved", "type": "BOOLEAN", "widget": {"name": "approved"}, "link": null},
+        {"name": "replacement_timestamp", "type": "FLOAT", "widget": {"name": "replacement_timestamp"}, "link": null},
+        {"name": "review_notes", "type": "STRING", "widget": {"name": "review_notes"}, "link": null},
+        {"name": "replacement_image", "type": "IMAGE", "shape": 7, "link": null}
+      ],
+      "outputs": [
+        {"name": "updated_analysis", "type": "ADS_ART_ANALYSIS", "slot_index": 0, "links": [7]},
+        {"name": "selected_frame", "type": "IMAGE", "slot_index": 1, "links": [8]},
+        {"name": "report", "type": "STRING", "slot_index": 2, "links": []}
+      ],
+      "title": "2b — Review or replace one frame",
+      "properties": {"Node name for S&R": "AdsArtReviewFrame"},
+      "widgets_values": [1, false, -1.0, ""],
+      "color": "#243744",
+      "bgcolor": "#31536d"
+    },
+    {
+      "id": 5,
+      "type": "PreviewImage",
+      "pos": [-960, 20],
+      "size": [340, 300],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [{"name": "images", "type": "IMAGE", "link": 16}],
+      "outputs": [],
+      "title": "Review representative frames",
+      "properties": {"Node name for S&R": "PreviewImage", "cnr_id": "comfy-core", "ver": "0.21.1"},
+      "widgets_values": []
+    },
+    {
+      "id": 6,
+      "type": "LoadImage",
+      "pos": [-1500, 400],
+      "size": [330, 320],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {"name": "image", "type": "COMBO", "widget": {"name": "image"}, "link": null},
+        {"name": "upload", "type": "IMAGEUPLOAD", "widget": {"name": "upload"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "slot_index": 0, "links": [3]},
+        {"name": "MASK", "type": "MASK", "slot_index": 1, "links": []}
+      ],
+      "title": "Artwork source",
+      "properties": {"Node name for S&R": "LoadImage", "cnr_id": "comfy-core", "ver": "0.21.1"},
+      "widgets_values": ["", "image"],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 7,
+      "type": "AdsArtPrepareIdentity",
+      "pos": [-1050, 410],
+      "size": [410, 180],
+      "flags": {},
+      "order": 6,
+      "mode": 2,
+      "inputs": [
+        {"name": "project", "type": "ADS_ART_PROJECT", "link": 2},
+        {"name": "art_image", "type": "IMAGE", "link": 3},
+        {"name": "identity_notes", "type": "STRING", "widget": {"name": "identity_notes"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "identity_request", "type": "ADS_ART_REQUEST", "slot_index": 0, "links": [4]},
+        {"name": "request_preview", "type": "STRING", "slot_index": 1, "links": []}
+      ],
+      "title": "3 — Prepare identity (enable for this phase)",
+      "properties": {"Node name for S&R": "AdsArtPrepareIdentity"},
+      "widgets_values": [""],
+      "color": "#3d3522",
+      "bgcolor": "#6a5930"
+    },
+    {
+      "id": 8,
+      "type": "AdsArtSubmitJob",
+      "pos": [-550, 410],
+      "size": [360, 220],
+      "flags": {},
+      "order": 7,
+      "mode": 2,
+      "inputs": [
+        {"name": "request", "type": "ADS_ART_REQUEST", "link": 4},
+        {"name": "confirm_paid_submission", "type": "BOOLEAN", "widget": {"name": "confirm_paid_submission"}, "link": null},
+        {"name": "minimum_credits_after", "type": "FLOAT", "widget": {"name": "minimum_credits_after"}, "link": null},
+        {"name": "upload_retries", "type": "INT", "widget": {"name": "upload_retries"}, "link": null},
+        {"name": "timeout_seconds", "type": "INT", "widget": {"name": "timeout_seconds"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "job", "type": "ADS_ART_JOB", "slot_index": 0, "links": []},
+        {"name": "submission_status", "type": "STRING", "slot_index": 1, "links": []}
+      ],
+      "title": "Identity submit — OFF by default",
+      "properties": {"Node name for S&R": "AdsArtSubmitJob"},
+      "widgets_values": [false, 0.0, 2, 180],
+      "color": "#4af",
+      "bgcolor": "#6b3b3b"
+    },
+    {
+      "id": 9,
+      "type": "LoadImage",
+      "pos": [-1500, 820],
+      "size": [330, 320],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {"name": "image", "type": "COMBO", "widget": {"name": "image"}, "link": null},
+        {"name": "upload", "type": "IMAGEUPLOAD", "widget": {"name": "upload"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "slot_index": 0, "links": [9, 13, 17]},
+        {"name": "MASK", "type": "MASK", "slot_index": 1, "links": []}
+      ],
+      "title": "Approved generated identity",
+      "properties": {"Node name for S&R": "LoadImage", "cnr_id": "comfy-core", "ver": "0.21.1"},
+      "widgets_values": ["", "image"],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 10,
+      "type": "PreviewImage",
+      "pos": [-1500, 1180],
+      "size": [330, 280],
+      "flags": {},
+      "order": 9,
+      "mode": 2,
+      "inputs": [{"name": "images", "type": "IMAGE", "link": 17}],
+      "outputs": [],
+      "title": "Approve identity visually",
+      "properties": {"Node name for S&R": "PreviewImage", "cnr_id": "comfy-core", "ver": "0.21.1"},
+      "widgets_values": []
+    },
+    {
+      "id": 11,
+      "type": "AdsArtPrepareShot",
+      "pos": [-1050, 760],
+      "size": [460, 600],
+      "flags": {},
+      "order": 10,
+      "mode": 2,
+      "inputs": [
+        {"name": "project", "type": "ADS_ART_PROJECT", "link": 6},
+        {"name": "analysis", "type": "ADS_ART_ANALYSIS", "link": 7},
+        {"name": "selected_source_frame", "type": "IMAGE", "link": 8},
+        {"name": "approved_identity", "type": "IMAGE", "link": 9},
+        {"name": "shot_number", "type": "INT", "widget": {"name": "shot_number"}, "link": null},
+        {"name": "source_frame_approved", "type": "BOOLEAN", "widget": {"name": "source_frame_approved"}, "link": null},
+        {"name": "identity_approved", "type": "BOOLEAN", "widget": {"name": "identity_approved"}, "link": null},
+        {"name": "objective", "type": "STRING", "widget": {"name": "objective"}, "link": null},
+        {"name": "action", "type": "STRING", "widget": {"name": "action"}, "link": null},
+        {"name": "camera_concepts", "type": "STRING", "widget": {"name": "camera_concepts"}, "link": null},
+        {"name": "framing_and_composition", "type": "STRING", "widget": {"name": "framing_and_composition"}, "link": null},
+        {"name": "lighting", "type": "STRING", "widget": {"name": "lighting"}, "link": null},
+        {"name": "elements_to_preserve", "type": "STRING", "widget": {"name": "elements_to_preserve"}, "link": null},
+        {"name": "planned_changes", "type": "STRING", "widget": {"name": "planned_changes"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "frame_request", "type": "ADS_ART_REQUEST", "slot_index": 0, "links": [10]},
+        {"name": "shot_plan_preview", "type": "STRING", "slot_index": 1, "links": []}
+      ],
+      "title": "4 — Plan selected shot (enable for this phase)",
+      "properties": {"Node name for S&R": "AdsArtPrepareShot"},
+      "widgets_values": [1, false, false, "", "", "", "", "", "", ""],
+      "color": "#30402e",
+      "bgcolor": "#476044"
+    },
+    {
+      "id": 12,
+      "type": "AdsArtSubmitJob",
+      "pos": [-500, 820],
+      "size": [360, 220],
+      "flags": {},
+      "order": 11,
+      "mode": 2,
+      "inputs": [
+        {"name": "request", "type": "ADS_ART_REQUEST", "link": 10},
+        {"name": "confirm_paid_submission", "type": "BOOLEAN", "widget": {"name": "confirm_paid_submission"}, "link": null},
+        {"name": "minimum_credits_after", "type": "FLOAT", "widget": {"name": "minimum_credits_after"}, "link": null},
+        {"name": "upload_retries", "type": "INT", "widget": {"name": "upload_retries"}, "link": null},
+        {"name": "timeout_seconds", "type": "INT", "widget": {"name": "timeout_seconds"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "job", "type": "ADS_ART_JOB", "slot_index": 0, "links": []},
+        {"name": "submission_status", "type": "STRING", "slot_index": 1, "links": []}
+      ],
+      "title": "Frame submit — OFF by default",
+      "properties": {"Node name for S&R": "AdsArtSubmitJob"},
+      "widgets_values": [false, 0.0, 2, 180],
+      "color": "#4a282f",
+      "bgcolor": "#6b3b3b"
+    },
+    {
+      "id": 13,
+      "type": "LoadImage",
+      "pos": [-1500, 1530],
+      "size": [330, 320],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {"name": "image", "type": "COMBO", "widget": {"name": "image"}, "link": null},
+        {"name": "upload", "type": "IMAGEUPLOAD", "widget": {"name": "upload"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "slot_index": 0, "links": [12, 18]},
+        {"name": "MASK", "type": "MASK", "slot_index": 1, "links": []}
+      ],
+      "title": "Approved recreated frame",
+      "properties": {"Node name for S&R": "LoadImage", "cnr_id": "comfy-core", "ver": "0.21.1"},
+      "widgets_values": ["", "image"],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 14,
+      "type": "PreviewImage",
+      "pos": [-1500, 1890],
+      "size": [330, 280],
+      "flags": {},
+      "order": 13,
+      "mode": 2,
+      "inputs": [{"name": "images", "type": "IMAGE", "link": 18}],
+      "outputs": [],
+      "title": "Approve recreated frame visually",
+      "properties": {"Node name for S&R": "PreviewImage", "cnr_id": "comfy-core", "ver": "0.21.1"},
+      "widgets_values": []
+    },
+    {
+      "id": 15,
+      "type": "AdsArtPrepareVideoShot",
+      "pos": [-1050, 1500],
+      "size": [470, 650],
+      "flags": {},
+      "order": 14,
+      "mode": 2,
+      "inputs": [
+        {"name": "project", "type": "ADS_ART_PROJECT", "link": 11},
+        {"name": "approved_recreated_frame", "type": "IMAGE", "link": 12},
+        {"name": "approved_identity", "type": "IMAGE", "link": 13},
+        {"name": "shot_id", "type": "STRING", "widget": {"name": "shot_id"}, "link": null},
+        {"name": "frame_approved", "type": "BOOLEAN", "widget": {"name": "frame_approved"}, "link": null},
+        {"name": "identity_approved", "type": "BOOLEAN", "widget": {"name": "identity_approved"}, "link": null},
+        {"name": "performance", "type": "STRING", "widget": {"name": "performance"}, "link": null},
+        {"name": "camera_trajectory", "type": "STRING", "widget": {"name": "camera_trajectory"}, "link": null},
+        {"name": "rhythm", "type": "STRING", "widget": {"name": "rhythm"}, "link": null},
+        {"name": "continuity", "type": "STRING", "widget": {"name": "continuity"}, "link": null},
+        {"name": "generated_duration_seconds", "type": "INT", "widget": {"name": "generated_duration_seconds"}, "link": null},
+        {"name": "final_edit_duration_seconds", "type": "FLOAT", "widget": {"name": "final_edit_duration_seconds"}, "link": null},
+        {"name": "video_aspect_ratio", "type": "COMBO", "widget": {"name": "video_aspect_ratio"}, "link": null},
+        {"name": "approve_aspect_adaptation", "type": "BOOLEAN", "widget": {"name": "approve_aspect_adaptation"}, "link": null},
+        {"name": "resolution", "type": "COMBO", "widget": {"name": "resolution"}, "link": null},
+        {"name": "generate_native_audio", "type": "BOOLEAN", "widget": {"name": "generate_native_audio"}, "link": null},
+        {"name": "bitrate_mode", "type": "COMBO", "widget": {"name": "bitrate_mode"}, "link": null},
+        {"name": "approved_end_frame", "type": "IMAGE", "shape": 7, "link": null}
+      ],
+      "outputs": [
+        {"name": "video_request", "type": "ADS_ART_REQUEST", "slot_index": 0, "links": [14]},
+        {"name": "request_preview", "type": "STRING", "slot_index": 1, "links": []}
+      ],
+      "title": "5 — Prepare Seedance shot (enable for this phase)",
+      "properties": {"Node name for S&R": "AdsArtPrepareVideoShot"},
+      "widgets_values": ["shot_001", false, false, "", "", "", "", 5, 5.0, "auto", false, "1080p", false, "standard"],
+      "color": "#26394a",
+      "bgcolor": "#37536b"
+    },
+    {
+      "id": 16,
+      "type": "AdsArtSubmitJob",
+      "pos": [-500, 1530],
+      "size": [360, 220],
+      "flags": {},
+      "order": 15,
+      "mode": 2,
+      "inputs": [
+        {"name": "request", "type": "ADS_ART_REQUEST", "link": 14},
+        {"name": "confirm_paid_submission", "type": "BOOLEAN", "widget": {"name": "confirm_paid_submission"}, "link": null},
+        {"name": "minimum_credits_after", "type": "FLOAT", "widget": {"name": "minimum_credits_after"}, "link": null},
+        {"name": "upload_retries", "type": "INT", "widget": {"name": "upload_retries"}, "link": null},
+        {"name": "timeout_seconds", "type": "INT", "widget": {"name": "timeout_seconds"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "job", "type": "ADS_ART_JOB", "slot_index": 0, "links": []},
+        {"name": "submission_status", "type": "STRING", "slot_index": 1, "links": []}
+      ],
+      "title": "Video submit — OFF by default",
+      "properties": {"Node name for S&R": "AdsArtSubmitJob"},
+      "widgets_values": [false, 0.0, 2, 180],
+      "color": "#4a282f",
+      "bgcolor": "#6b3b3b"
+    },
+    {
+      "id": 17,
+      "type": "AdsArtAssembleClips",
+      "pos": [-30, 1530],
+      "size": [430, 310],
+      "flags": {},
+      "order": 16,
+      "mode": 2,
+      "inputs": [
+        {"name": "project", "type": "ADS_ART_PROJECT", "link": 15},
+        {"name": "clip_paths", "type": "STRING", "widget": {"name": "clip_paths"}, "link": null},
+        {"name": "original_commercial_path", "type": "STRING", "widget": {"name": "original_commercial_path"}, "link": null},
+        {"name": "audio_treatment", "type": "COMBO", "widget": {"name": "audio_treatment"}, "link": null},
+        {"name": "external_audio_path", "type": "STRING", "widget": {"name": "external_audio_path"}, "link": null},
+        {"name": "output_filename", "type": "STRING", "widget": {"name": "output_filename"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "video_path", "type": "STRING", "slot_index": 0, "links": []},
+        {"name": "montage_report", "type": "STRING", "slot_index": 1, "links": []}
+      ],
+      "title": "7 — Assemble accepted clips",
+      "properties": {"Node name for S&R": "AdsArtAssembleClips"},
+      "widgets_values": ["", "", "original", "", "ads_art_final.mp4"],
+      "color": "#3a3040",
+      "bgcolor": "#55445e"
+    },
+    {
+      "id": 18,
+      "type": "AdsArtRecoverJob",
+      "pos": [470, 400],
+      "size": [420, 260],
+      "flags": {},
+      "order": 17,
+      "mode": 2,
+      "inputs": [
+        {"name": "project", "type": "ADS_ART_PROJECT", "link": 19},
+        {"name": "request_id", "type": "STRING", "widget": {"name": "request_id"}, "link": null},
+        {"name": "job_id", "type": "STRING", "widget": {"name": "job_id"}, "link": null},
+        {"name": "shot_id", "type": "STRING", "widget": {"name": "shot_id"}, "link": null},
+        {"name": "stage", "type": "COMBO", "widget": {"name": "stage"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "job", "type": "ADS_ART_JOB", "slot_index": 0, "links": [20]},
+        {"name": "recovery_status", "type": "STRING", "slot_index": 1, "links": []}
+      ],
+      "title": "6a — Recover persisted request/job (enable when needed)",
+      "properties": {"Node name for S&R": "AdsArtRecoverJob"},
+      "widgets_values": ["", "", "identity", "identity"],
+      "color": "#3f3430",
+      "bgcolor": "#665147"
+    },
+    {
+      "id": 19,
+      "type": "AdsArtPollJob",
+      "pos": [940, 400],
+      "size": [390, 220],
+      "flags": {},
+      "order": 18,
+      "mode": 2,
+      "inputs": [
+        {"name": "job", "type": "ADS_ART_JOB", "link": 20},
+        {"name": "job_id_override", "type": "STRING", "widget": {"name": "job_id_override"}, "link": null},
+        {"name": "download_completed", "type": "BOOLEAN", "widget": {"name": "download_completed"}, "link": null},
+        {"name": "query_retries", "type": "INT", "widget": {"name": "query_retries"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "updated_job", "type": "ADS_ART_JOB", "slot_index": 0, "links": []},
+        {"name": "result_paths", "type": "STRING", "slot_index": 1, "links": [21]},
+        {"name": "status", "type": "STRING", "slot_index": 2, "links": []}
+      ],
+      "title": "6b — Poll once; rerun until completed",
+      "properties": {"Node name for S&R": "AdsArtPollJob"},
+      "widgets_values": ["", true, 2],
+      "color": "#3f3430",
+      "bgcolor": "#665147"
+    },
+    {
+      "id": 20,
+      "type": "AdsArtLoadImageResult",
+      "pos": [1380, 400],
+      "size": [330, 90],
+      "flags": {},
+      "order": 19,
+      "mode": 2,
+      "inputs": [
+        {"name": "image_path", "type": "STRING", "link": 21}
+      ],
+      "outputs": [
+        {"name": "image", "type": "IMAGE", "slot_index": 0, "links": [22]}
+      ],
+      "title": "6c — Load completed IMAGE result only",
+      "properties": {"Node name for S&R": "AdsArtLoadImageResult"},
+      "widgets_values": [],
+      "color": "#3f3430",
+      "bgcolor": "#665147"
+    },
+    {
+      "id": 21,
+      "type": "PreviewImage",
+      "pos": [1380, 540],
+      "size": [330, 300],
+      "flags": {},
+      "order": 20,
+      "mode": 2,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 22}
+      ],
+      "outputs": [],
+      "title": "6d — Review recovered image",
+      "properties": {"Node name for S&R": "PreviewImage", "cnr_id": "comfy-core", "ver": "0.21.1"},
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [1, 1, 0, 3, 0, "ADS_ART_PROJECT"],
+    [2, 1, 0, 7, 0, "ADS_ART_PROJECT"],
+    [3, 6, 0, 7, 1, "IMAGE"],
+    [4, 7, 0, 8, 0, "ADS_ART_REQUEST"],
+    [5, 3, 0, 4, 0, "ADS_ART_ANALYSIS"],
+    [6, 1, 0, 11, 0, "ADS_ART_PROJECT"],
+    [7, 4, 0, 11, 1, "ADS_ART_ANALYSIS"],
+    [8, 4, 1, 11, 2, "IMAGE"],
+    [9, 9, 0, 11, 3, "IMAGE"],
+    [10, 11, 0, 12, 0, "ADS_ART_REQUEST"],
+    [11, 1, 0, 15, 0, "ADS_ART_PROJECT"],
+    [12, 13, 0, 15, 1, "IMAGE"],
+    [13, 9, 0, 15, 2, "IMAGE"],
+    [14, 15, 0, 16, 0, "ADS_ART_REQUEST"],
+    [15, 1, 0, 17, 0, "ADS_ART_PROJECT"],
+    [16, 3, 1, 5, 0, "IMAGE"],
+    [17, 9, 0, 10, 0, "IMAGE"],
+    [18, 13, 0, 14, 0, "IMAGE"],
+    [19, 1, 0, 18, 0, "ADS_ART_PROJECT"],
+    [20, 18, 0, 19, 0, "ADS_ART_JOB"],
+    [21, 19, 1, 20, 0, "STRING"],
+    [22, 20, 0, 21, 0, "IMAGE"]
+  ],
+  "groups": [
+    {"id": 1, "title": "Staged workflow — submit and recovery nodes are OFF by default", "bounding": [-1540, -420, 3290, 2640], "color": "#6b5b7a", "font_size": 24, "flags": {}}
+  ],
+  "config": {},
+  "extra": {"ds": {"scale": 0.75, "offset": [1600, 500]}},
+  "version": 0.4
+}

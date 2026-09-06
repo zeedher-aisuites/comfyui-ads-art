@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "retrieved_at": "2026-09-06",
+  "sources": [
+    "Higgsfield MCP models_get",
+    "Higgsfield CLI 1.1.23 model get"
+  ],
+  "note": "Offline validation snapshot only. AdsArtSubmitJob re-queries the live CLI catalog before every submission.",
+  "models": {
+    "nano_banana_pro": {
+      "job_type": "nano_banana_pro",
+      "type": "image",
+      "aspect_ratios": ["1:1", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "9:16", "16:9", "21:9"],
+      "resolution": ["1k", "2k", "4k"],
+      "media_parameters": ["image_references"],
+      "max_image_references": 14
+    },
+    "seedance_2_5": {
+      "job_type": "seedance_2_5",
+      "type": "video",
+      "modes": ["t2v", "omni_reference", "video_edit", "video_extension"],
+      "ads_art_allowed_mode": "omni_reference",
+      "ads_art_prohibited_modes": ["video_edit", "video_extension"],
+      "aspect_ratios": ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+      "resolution": ["480p", "720p", "1080p"],
+      "duration_seconds": {"min": 4, "max": 30},
+      "catalog_media_parameters": ["start_image", "end_image", "image_references", "video_references", "audio_references"],
+      "ads_art_allowed_media_parameters": ["start_image", "end_image", "image_references"],
+      "ads_art_prohibited_media_parameters": ["video_references", "audio_references"],
+      "max_ads_art_images": 30
+    }
+  }
+}

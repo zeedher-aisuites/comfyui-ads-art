@@ -1,0 +1,1116 @@
+{
+  "schema_version": "1.0.0",
+  "title": "Ads Art — Base de conocimiento de dirección de cámara",
+  "language": "es",
+  "created_on": "2026-09-06",
+  "artifact_status": "knowledge_base_ready_for_integration",
+  "implementation_status": {
+    "comfyui_node_implemented": false,
+    "workflow_modified": false,
+    "generation_jobs_submitted": false
+  },
+  "purpose_es": "Convertir referencias visuales de encuadre y movimiento en decisiones de toma y prompts para recrear comerciales con un influencer procedente de una obra de arte.",
+  "scope_es": "Catálogo editorial y contrato de integración. Este JSON no es un workflow de ComfyUI ni ejecuta modelos por sí solo.",
+  "sources": [
+    {
+      "id": "product_views_grid",
+      "filename": "1000406273.png",
+      "library_file_id": "libfile_803f8d40ff008191af3d16030ee4552e",
+      "kind": "user_reference_image",
+      "readable_labels": [
+        "/droneview",
+        "/aerialview",
+        "/topdown",
+        "/lowangle",
+        "/highangle",
+        "/sideview"
+      ],
+      "notes_es": [
+        "Las etiquetas de la fila inferior están recortadas; las vistas de detalle y la distorsión circular se reconocen visualmente, pero no se transcriben etiquetas ausentes.",
+        "Las imágenes son ejemplos orientativos; una etiqueta no sustituye una descripción geométrica."
+      ]
+    },
+    {
+      "id": "camera_20_poster",
+      "filename": "1000406275.png",
+      "library_file_id": "libfile_e98f0a5f1efc819185c8ad643053568d",
+      "kind": "user_reference_image",
+      "notes_es": [
+        "Se normalizan las 20 selecciones legibles por dimensión cinematográfica.",
+        "La selección 20 agrupa fisheye y wide angle; esta base los separa."
+      ]
+    },
+    {
+      "id": "camera_motion_storyboard",
+      "filename": "1000406274.png",
+      "library_file_id": "libfile_374a0feee1d8819182ea7e8a1d8013fd",
+      "kind": "user_reference_image",
+      "readable_motion_labels": [
+        "Crane Up",
+        "Spiral Push In",
+        "Drone Pull Back",
+        "Aggressive Push In"
+      ],
+      "notes_es": [
+        "Se aprovechan la estructura temporal, los esquemas de trayectoria y las etiquetas legibles.",
+        "El diagrama circular se interpreta como órbita. No se afirma que el video haya sido visto.",
+        "El texto pequeño en chino no se transcribe ni se considera verificado.",
+        "Las duraciones y focales del ejemplo no se convierten en valores obligatorios para otros anuncios."
+      ]
+    }
+  ],
+  "provenance_policy_es": [
+    "Las imágenes son fuentes de inspiración técnica aportadas por el usuario; no son documentación de comandos de Nano Banana Pro o Seedance.",
+    "Las definiciones, reglas de uso y plantillas son una normalización editorial propuesta a partir de las referencias.",
+    "Las etiquetas parcialmente ocultas o ilegibles no se reconstruyen como citas.",
+    "Las recomendaciones estéticas son condicionales al brief, no garantías de calidad ni de rendimiento publicitario."
+  ],
+  "project_contract": {
+    "execution_environment": "ComfyUI",
+    "generation_provider": "Higgsfield MCP",
+    "user_inputs": {
+      "video": {
+        "purpose": [
+          "analysis",
+          "frame_extraction"
+        ],
+        "forward_to_seedance": false
+      },
+      "art_image": {
+        "purpose": "Crear una identidad hiperrealista reconocible y aprobarla antes de animar."
+      },
+      "positive_prompt": {
+        "meaning_es": "Qué conservar",
+        "applies_to": [
+          "frame_recreation",
+          "video_prompt"
+        ]
+      },
+      "restrictive_prompt": {
+        "meaning_es": "Qué eliminar o sustituir",
+        "applies_to": [
+          "frame_recreation",
+          "video_prompt"
+        ]
+      },
+      "negative_prompt": {
+        "meaning_es": "Qué evitar generar",
+        "applies_to": [
+          "identity_generation",
+          "frame_recreation",
+          "video_prompt"
+        ]
+      },
+      "creative_prompt": {
+        "required": false,
+        "meaning_es": "Qué mejorar y cómo dirigir la nueva versión"
+      }
+    },
+    "image_generation": {
+      "model": "nano_banana_pro",
+      "aspect_ratio": "4:5",
+      "resolution": "2k",
+      "preserve_user_configuration": true
+    },
+    "video_generation": {
+      "model": "seedance_2_5",
+      "preferred_mode": "omni_reference",
+      "allowed_media_kinds": [
+        "approved_still_frame",
+        "approved_character_image",
+        "approved_product_image",
+        "approved_environment_image"
+      ],
+      "prohibited_media_kinds": [
+        "video",
+        "audio"
+      ],
+      "allowed_canonical_media_roles": [
+        "image",
+        "start_image",
+        "end_image"
+      ],
+      "prohibited_canonical_media_roles": [
+        "video",
+        "audio"
+      ],
+      "prohibited_modes": [
+        "video_edit",
+        "video_extension"
+      ],
+      "resolution": "1080p",
+      "resolution_status": "proposed_default_not_user_approved",
+      "aspect_ratio": null,
+      "aspect_ratio_policy_es": "Seleccionar el formato de video por separado y validarlo en el catálogo vigente. Las imágenes 4:5 no establecen automáticamente el formato del video. Cualquier recorte o adaptación debe estar explícito en el plan.",
+      "native_audio_policy_es": "Configurar por separado. Si se reutiliza el audio original, incorporarlo durante el montaje; no enviarlo a Seedance como referencia.",
+      "capabilities_policy_es": "Consultar el catálogo MCP vigente antes de ejecutar. Validar combinaciones de roles y límites; nunca cambiar silenciosamente a video-to-video."
+    },
+    "prompt_transport": {
+      "user_fields_are_internal_controls": true,
+      "native_negative_prompt_assumed": false,
+      "strategy_es": "Expandir los campos en instrucciones claras y específicas para cada etapa dentro del prompt admitido por el modelo.",
+      "compliance_es": "Las restricciones generativas se comprueban en el resultado; escribirlas en el prompt no garantiza cumplimiento."
+    }
+  },
+  "dimensions": [
+    {
+      "id": "camera_angle",
+      "meaning_es": "Altura y dirección de la cámara respecto al objetivo."
+    },
+    {
+      "id": "shot_scale",
+      "meaning_es": "Cuánto del sujeto y del entorno entra en el encuadre."
+    },
+    {
+      "id": "viewpoint",
+      "meaning_es": "Desde qué lado o participante se observa la acción."
+    },
+    {
+      "id": "composition",
+      "meaning_es": "Distribución y relaciones de los elementos en la imagen."
+    },
+    {
+      "id": "lighting",
+      "meaning_es": "Relación de luz entre sujeto y fondo."
+    },
+    {
+      "id": "lens_look",
+      "meaning_es": "Campo visual y carácter de la proyección solicitada."
+    },
+    {
+      "id": "camera_platform",
+      "meaning_es": "Posición o soporte conceptual, independiente del ángulo."
+    },
+    {
+      "id": "focus_detail",
+      "meaning_es": "Detalle objetivo y plano de foco."
+    },
+    {
+      "id": "camera_movement",
+      "meaning_es": "Trayectoria de la cámara en el tiempo."
+    }
+  ],
+  "concepts": [
+    {
+      "id": "low_angle",
+      "dimension": "camera_angle",
+      "label_es": "Contrapicado",
+      "definition_es": "Cámara por debajo del punto de interés, orientada hacia arriba.",
+      "prompt_fragment_en": "Place the camera below the subject and angle it upward.",
+      "use_when_es": "Dar presencia al personaje o producto.",
+      "source_ids": [
+        "camera_20_poster",
+        "product_views_grid"
+      ],
+      "cautions_es": [
+        "Mantener proporciones y geometría del envase si están bloqueadas."
+      ],
+      "aliases": [
+        "/lowangle",
+        "low angle"
+      ]
+    },
+    {
+      "id": "high_angle",
+      "dimension": "camera_angle",
+      "label_es": "Picado",
+      "definition_es": "Cámara elevada e inclinada hacia abajo; no necesariamente vertical.",
+      "prompt_fragment_en": "Place the camera above the subject, looking down at an oblique angle.",
+      "use_when_es": "Mostrar superficie de trabajo, manos o relación con el entorno.",
+      "source_ids": [
+        "camera_20_poster",
+        "product_views_grid"
+      ],
+      "cautions_es": [],
+      "aliases": [
+        "/highangle",
+        "high angle"
+      ]
+    },
+    {
+      "id": "eye_level",
+      "dimension": "camera_angle",
+      "label_es": "A la altura de los ojos",
+      "definition_es": "Cámara al nivel de los ojos del personaje, con dirección aproximadamente horizontal.",
+      "prompt_fragment_en": "Place the camera at the character's eye level.",
+      "use_when_es": "Conversación, expresión y presentación directa.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [
+        "Para productos, especificar la altura respecto al objeto."
+      ],
+      "aliases": [
+        "eye level"
+      ]
+    },
+    {
+      "id": "worms_eye",
+      "dimension": "camera_angle",
+      "label_es": "Contrapicado extremo",
+      "definition_es": "Cámara muy cerca del suelo, orientada pronunciadamente hacia arriba.",
+      "prompt_fragment_en": "Place the camera near ground level, looking steeply upward.",
+      "use_when_es": "Enfatizar escala o monumentalidad cuando el brief lo permita.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [
+        "Puede dificultar el reconocimiento del rostro o la lectura de una etiqueta."
+      ],
+      "aliases": [
+        "worm's-eye view"
+      ]
+    },
+    {
+      "id": "top_down",
+      "dimension": "camera_angle",
+      "label_es": "Cenital",
+      "definition_es": "Cámara directamente sobre el sujeto, con el eje óptico vertical hacia abajo.",
+      "prompt_fragment_en": "Place the camera directly overhead, looking vertically down.",
+      "use_when_es": "Mostrar disposición de objetos y acciones sobre una mesa.",
+      "source_ids": [
+        "camera_20_poster",
+        "product_views_grid"
+      ],
+      "cautions_es": [
+        "En esta base bird's-eye se normaliza según la lámina como cenital; en otros contextos puede ser una vista aérea oblicua."
+      ],
+      "aliases": [
+        "/topdown",
+        "top-down",
+        "bird's-eye view"
+      ]
+    },
+    {
+      "id": "extreme_close_up",
+      "dimension": "shot_scale",
+      "label_es": "Plano de detalle",
+      "definition_es": "Una parte pequeña del rostro u objeto ocupa casi todo el encuadre.",
+      "prompt_fragment_en": "Frame only the selected small detail so it fills most of the image.",
+      "use_when_es": "Resaltar ojos, gotas, textura o un detalle identificable del producto.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [
+        "No implica automáticamente una óptica macro."
+      ],
+      "aliases": [
+        "super close-up",
+        "extreme close-up"
+      ]
+    },
+    {
+      "id": "close_up",
+      "dimension": "shot_scale",
+      "label_es": "Primer plano",
+      "definition_es": "Encuadre cerrado del rostro o del objeto principal.",
+      "prompt_fragment_en": "Use a close-up that clearly presents the face or the selected product.",
+      "use_when_es": "Leer emoción, identidad o detalles principales.",
+      "source_ids": [
+        "camera_20_poster",
+        "product_views_grid"
+      ],
+      "cautions_es": [
+        "En el grid de producto, la etiqueta inferior está cortada; la escala se interpreta visualmente."
+      ],
+      "aliases": [
+        "close-up"
+      ]
+    },
+    {
+      "id": "bust_shot",
+      "dimension": "shot_scale",
+      "label_es": "Plano de busto",
+      "definition_es": "Persona encuadrada aproximadamente desde el pecho hacia arriba.",
+      "prompt_fragment_en": "Frame the character from the chest upward.",
+      "use_when_es": "Presentación del influencer y microexpresiones.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [],
+      "aliases": [
+        "bust shot"
+      ]
+    },
+    {
+      "id": "full_shot",
+      "dimension": "shot_scale",
+      "label_es": "Cuerpo entero",
+      "definition_es": "Se incluye a la persona completa dentro del encuadre.",
+      "prompt_fragment_en": "Keep the character's full body visible within the frame.",
+      "use_when_es": "Mostrar vestuario, postura y acción corporal.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [],
+      "aliases": [
+        "full shot"
+      ]
+    },
+    {
+      "id": "long_shot",
+      "dimension": "shot_scale",
+      "label_es": "Plano general amplio",
+      "definition_es": "El personaje ocupa una parte pequeña del entorno visible.",
+      "prompt_fragment_en": "Use a wide establishing shot with the character small within the environment.",
+      "use_when_es": "Presentar lugar, escala y relación espacial.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [],
+      "aliases": [
+        "long shot"
+      ]
+    },
+    {
+      "id": "side_shot",
+      "dimension": "viewpoint",
+      "label_es": "Vista lateral",
+      "definition_es": "Cámara situada a un lado del sujeto; en un rostro, predomina el perfil.",
+      "prompt_fragment_en": "View the subject from the side; show the character in profile when applicable.",
+      "use_when_es": "Mostrar perfil, profundidad o interacción lateral.",
+      "source_ids": [
+        "camera_20_poster",
+        "product_views_grid"
+      ],
+      "cautions_es": [
+        "La lata es casi cilíndrica: su lado debe definirse respecto al diseño del envase, no solo por su silueta."
+      ],
+      "aliases": [
+        "/sideview",
+        "side shot"
+      ]
+    },
+    {
+      "id": "pov",
+      "dimension": "viewpoint",
+      "label_es": "Primera persona",
+      "definition_es": "Encuadre desde la posición visual de un participante identificado.",
+      "prompt_fragment_en": "Show the scene from the named participant's first-person viewpoint.",
+      "use_when_es": "Acciones de uso del producto o experiencia del usuario.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [
+        "Definir de quién es el punto de vista; manos y dirección de mirada deben coincidir."
+      ],
+      "aliases": [
+        "POV"
+      ]
+    },
+    {
+      "id": "over_shoulder",
+      "dimension": "viewpoint",
+      "label_es": "Sobre el hombro",
+      "definition_es": "Un hombro o parte posterior de la cabeza en primer término enmarca al objetivo.",
+      "prompt_fragment_en": "Frame the target over the foreground character's shoulder.",
+      "use_when_es": "Conversación o relación entre personaje y objeto.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [
+        "Definir personaje en primer término, objetivo de la toma y lado del hombro."
+      ],
+      "aliases": [
+        "over-the-shoulder shot",
+        "OTS"
+      ]
+    },
+    {
+      "id": "back_shot",
+      "dimension": "viewpoint",
+      "label_es": "Vista posterior",
+      "definition_es": "La cámara se sitúa detrás del personaje u objeto.",
+      "prompt_fragment_en": "View the subject from behind.",
+      "use_when_es": "Revelar destino, postura o relación con el escenario.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [],
+      "aliases": [
+        "back shot"
+      ]
+    },
+    {
+      "id": "front_shot",
+      "dimension": "viewpoint",
+      "label_es": "Vista frontal",
+      "definition_es": "La cámara se sitúa frente al sujeto.",
+      "prompt_fragment_en": "View the subject directly from the front.",
+      "use_when_es": "Presentación, mirada a cámara o lectura frontal del producto.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [],
+      "aliases": [
+        "front shot"
+      ]
+    },
+    {
+      "id": "rule_of_thirds",
+      "dimension": "composition",
+      "label_es": "Regla de tercios",
+      "definition_es": "Los puntos de interés se sitúan cerca de líneas o intersecciones de tercios.",
+      "prompt_fragment_en": "Place the main point of interest near a rule-of-thirds intersection.",
+      "use_when_es": "Distribuir personaje, producto y espacio libre.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [
+        "La posición exacta se define según la acción; no es una obligación estética universal."
+      ],
+      "aliases": [
+        "rule of thirds"
+      ]
+    },
+    {
+      "id": "diagonal_composition",
+      "dimension": "composition",
+      "label_es": "Composición diagonal",
+      "definition_es": "Líneas o posiciones dominantes recorren el encuadre diagonalmente.",
+      "prompt_fragment_en": "Arrange the dominant visual lines diagonally through the frame.",
+      "use_when_es": "Sugerir profundidad, dirección o energía.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [
+        "No equivale necesariamente a inclinar el horizonte."
+      ],
+      "aliases": [
+        "diagonal composition"
+      ]
+    },
+    {
+      "id": "frame_within_frame",
+      "dimension": "composition",
+      "label_es": "Encuadre dentro del encuadre",
+      "definition_es": "Elementos del escenario rodean visualmente al sujeto.",
+      "prompt_fragment_en": "Use existing foreground or architectural elements to frame the subject.",
+      "use_when_es": "Concentrar atención y dar profundidad.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [
+        "Usar elementos existentes si el escenario está bloqueado."
+      ],
+      "aliases": [
+        "framing"
+      ]
+    },
+    {
+      "id": "silhouette",
+      "dimension": "lighting",
+      "label_es": "Silueta a contraluz",
+      "definition_es": "La figura se lee principalmente por su contorno frente a un fondo más luminoso.",
+      "prompt_fragment_en": "Place the subject against a brighter background so the silhouette reads clearly.",
+      "use_when_es": "Priorizar forma y atmósfera.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [
+        "Entra en conflicto con exigir detalle visible de un rostro o una etiqueta en esa misma zona."
+      ],
+      "aliases": [
+        "silhouette"
+      ]
+    },
+    {
+      "id": "wide_angle",
+      "dimension": "lens_look",
+      "label_es": "Gran angular",
+      "definition_es": "Campo visual amplio; especificar por separado si se permite curvatura de líneas.",
+      "prompt_fragment_en": "Use a wide field of view with straight architectural lines.",
+      "use_when_es": "Mostrar entorno y profundidad.",
+      "source_ids": [
+        "camera_20_poster"
+      ],
+      "cautions_es": [
+        "Se separa de fisheye; no implica distorsión circular."
+      ],
+      "aliases": [
+        "wide angle"
+      ]
+    },
+    {
+      "id": "fisheye",
+      "dimension": "lens_look",
+      "label_es": "Ojo de pez",
+      "definition_es": "Proyección con distorsión curvilínea marcada.",
+      "prompt_fragment_en": "Use a fisheye lens look with pronounced curved lines near the image edges.",
+      "use_when_es": "Efecto expresivo cuando el brief admita distorsión.",
+      "source_ids": [
+        "camera_20_poster",
+        "product_views_grid"
+      ],
+      "cautions_es": [
+        "Evitar por defecto cuando estén bloqueadas la forma del envase, la arquitectura o las proporciones faciales.",
+        "En la fila inferior del grid se reconoce el efecto visual, pero la etiqueta está recortada."
+      ],
+      "aliases": [
+        "fisheye"
+      ]
+    },
+    {
+      "id": "drone_view",
+      "dimension": "camera_platform",
+      "label_es": "Vista desde dron",
+      "definition_es": "Posición aérea propuesta para la cámara; el ángulo y movimiento se especifican aparte.",
+      "prompt_fragment_en": "View the scene from a drone-like elevated camera position.",
+      "use_when_es": "Presentar un lugar o plantear desplazamientos aéreos.",
+      "source_ids": [
+        "product_views_grid"
+      ],
+      "cautions_es": [
+        "No exige movimiento; no implica cenital."
+      ],
+      "aliases": [
+        "/droneview"
+      ]
+    },
+    {
+      "id": "aerial_view",
+      "dimension": "camera_platform",
+      "label_es": "Vista aérea",
+      "definition_es": "Cámara elevada que presenta la escena desde arriba a una escala definida.",
+      "prompt_fragment_en": "View the scene from a high aerial position, with altitude and tilt defined by the shot plan.",
+      "use_when_es": "Mostrar distribución y relación con el entorno.",
+      "source_ids": [
+        "product_views_grid"
+      ],
+      "cautions_es": [
+        "Puede ser oblicua o cenital; elegir una orientación explícita."
+      ],
+      "aliases": [
+        "/aerialview"
+      ]
+    },
+    {
+      "id": "macro_detail",
+      "dimension": "focus_detail",
+      "label_es": "Detalle macro",
+      "definition_es": "Intención visual de revelar detalles muy pequeños de una superficie u objeto.",
+      "prompt_fragment_en": "Reveal fine surface detail at macro scale, with a clearly defined focus plane.",
+      "use_when_es": "Texturas, condensación y acabados del producto.",
+      "source_ids": [
+        "product_views_grid"
+      ],
+      "cautions_es": [
+        "Concepto inferido de la imagen de la anilla; etiqueta inferior ilegible.",
+        "El lenguaje macro orienta la generación; no demuestra una magnificación física exacta."
+      ],
+      "aliases": [
+        "macro"
+      ]
+    },
+    {
+      "id": "crane_up",
+      "dimension": "camera_movement",
+      "label_es": "Elevación de cámara",
+      "definition_es": "La cámara asciende físicamente mientras mantiene o cambia su objetivo según el plan.",
+      "prompt_fragment_en": "Raise the camera smoothly along a vertical path while tracking the specified subject.",
+      "use_when_es": "Revelar altura o ampliar la lectura del escenario.",
+      "source_ids": [
+        "camera_motion_storyboard"
+      ],
+      "cautions_es": [
+        "No es un tilt: definir altura inicial y final.",
+        "Puede combinarse con órbita solo si el movimiento compuesto es intencional."
+      ],
+      "aliases": [
+        "Crane Up"
+      ]
+    },
+    {
+      "id": "orbit",
+      "dimension": "camera_movement",
+      "label_es": "Órbita",
+      "definition_es": "La cámara recorre un arco alrededor de un sujeto o centro definido.",
+      "prompt_fragment_en": "Move the camera along a defined arc around the subject, maintaining the specified distance.",
+      "use_when_es": "Mostrar volumen y relación espacial.",
+      "source_ids": [
+        "camera_motion_storyboard"
+      ],
+      "cautions_es": [
+        "Interpretación del diagrama circular; elegir arco, sentido y altura.",
+        "No aplicar una vuelta completa como valor predeterminado."
+      ],
+      "aliases": [
+        "orbit"
+      ]
+    },
+    {
+      "id": "spiral_push_in",
+      "dimension": "camera_movement",
+      "label_es": "Acercamiento en espiral",
+      "definition_es": "La cámara gira alrededor del sujeto mientras reduce su distancia.",
+      "prompt_fragment_en": "Arc around the subject while gradually moving closer, keeping the subject framed.",
+      "use_when_es": "Intensificar presencia manteniendo un movimiento envolvente.",
+      "source_ids": [
+        "camera_motion_storyboard"
+      ],
+      "cautions_es": [
+        "Definir arco, distancia inicial y final y velocidad; revisar continuidad y geometría."
+      ],
+      "aliases": [
+        "Spiral Push In"
+      ]
+    },
+    {
+      "id": "drone_pull_back",
+      "dimension": "camera_movement",
+      "label_es": "Retirada aérea",
+      "definition_es": "La cámara se aleja por una trayectoria aérea; el ascenso es opcional y debe indicarse.",
+      "prompt_fragment_en": "Move the aerial camera backward to reveal more of the environment.",
+      "use_when_es": "Ampliar escala o cerrar con una revelación del lugar.",
+      "source_ids": [
+        "camera_motion_storyboard"
+      ],
+      "cautions_es": [
+        "Definir si hay ascenso y qué entorno puede aparecer; no inventar otra localización."
+      ],
+      "aliases": [
+        "Drone Pull Back"
+      ]
+    },
+    {
+      "id": "rapid_push_in",
+      "dimension": "camera_movement",
+      "label_es": "Acercamiento rápido",
+      "definition_es": "La cámara avanza rápidamente hacia un objetivo definido.",
+      "prompt_fragment_en": "Move the camera rapidly toward the specified target, with a controlled final framing.",
+      "use_when_es": "Énfasis o cambio brusco de intensidad permitido por el brief.",
+      "source_ids": [
+        "camera_motion_storyboard"
+      ],
+      "cautions_es": [
+        "No equivale a zoom óptico; indicar avance físico.",
+        "El ejemplo del storyboard no impone este estilo a todos los comerciales."
+      ],
+      "aliases": [
+        "Aggressive Push In"
+      ]
+    },
+    {
+      "id": "locked_off",
+      "dimension": "camera_movement",
+      "label_es": "Cámara fija",
+      "definition_es": "La cámara conserva posición y orientación durante la toma.",
+      "prompt_fragment_en": "Keep the camera locked off while the subject performs the specified action.",
+      "use_when_es": "Lectura clara de producto, diálogo o actuación sutil.",
+      "source_ids": [],
+      "cautions_es": [
+        "Extensión propuesta para permitir tomas sin desplazamiento de cámara."
+      ],
+      "aliases": [
+        "static camera"
+      ]
+    },
+    {
+      "id": "gentle_push_in",
+      "dimension": "camera_movement",
+      "label_es": "Acercamiento suave",
+      "definition_es": "La cámara avanza lentamente hacia un objetivo manteniendo el encuadre previsto.",
+      "prompt_fragment_en": "Move the camera slowly closer to the subject with a controlled, subtle push-in.",
+      "use_when_es": "Énfasis gradual en rostro o producto.",
+      "source_ids": [],
+      "cautions_es": [
+        "Extensión propuesta; definir inicio y final.",
+        "Se distingue de un zoom óptico."
+      ],
+      "aliases": [
+        "slow push-in"
+      ]
+    }
+  ],
+  "source_selection_map": [
+    {
+      "source_id": "camera_20_poster",
+      "selection": "01",
+      "concept_ids": [
+        "low_angle"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "02",
+      "concept_ids": [
+        "high_angle"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "03",
+      "concept_ids": [
+        "eye_level"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "04",
+      "concept_ids": [
+        "worms_eye"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "05",
+      "concept_ids": [
+        "top_down"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "06",
+      "concept_ids": [
+        "extreme_close_up"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "07",
+      "concept_ids": [
+        "close_up"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "08",
+      "concept_ids": [
+        "bust_shot"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "09",
+      "concept_ids": [
+        "full_shot"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "10",
+      "concept_ids": [
+        "long_shot"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "11",
+      "concept_ids": [
+        "side_shot"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "12",
+      "concept_ids": [
+        "pov"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "13",
+      "concept_ids": [
+        "over_shoulder"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "14",
+      "concept_ids": [
+        "back_shot"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "15",
+      "concept_ids": [
+        "front_shot"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "16",
+      "concept_ids": [
+        "rule_of_thirds"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "17",
+      "concept_ids": [
+        "diagonal_composition"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "18",
+      "concept_ids": [
+        "frame_within_frame"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "19",
+      "concept_ids": [
+        "silhouette"
+      ]
+    },
+    {
+      "source_id": "camera_20_poster",
+      "selection": "20",
+      "concept_ids": [
+        "fisheye",
+        "wide_angle"
+      ]
+    }
+  ],
+  "conflict_rules": [
+    {
+      "id": "user_constraints_first",
+      "kind": "priority",
+      "rule_es": "Las decisiones explícitas del usuario tienen prioridad sobre los presets del catálogo. Registrar contradicciones entre instrucciones antes de generar."
+    },
+    {
+      "id": "one_angle_per_instant",
+      "kind": "geometry",
+      "rule_es": "Elegir un ángulo dominante por instante; una transición entre ángulos necesita un recorrido temporal explícito."
+    },
+    {
+      "id": "framing_requires_target",
+      "kind": "semantics",
+      "rule_es": "Un primer plano y un cuerpo entero pueden coexistir solo si se refieren a sujetos distintos o a momentos distintos."
+    },
+    {
+      "id": "silhouette_vs_detail",
+      "kind": "visibility",
+      "concept_ids": [
+        "silhouette"
+      ],
+      "rule_es": "Si el rostro o la etiqueta deben ser legibles, no seleccionar silueta completa sobre esas zonas."
+    },
+    {
+      "id": "fisheye_vs_geometry_lock",
+      "kind": "geometry",
+      "concept_ids": [
+        "fisheye"
+      ],
+      "rule_es": "Si el brief exige geometría sin distorsión en todo el encuadre, descartar fisheye."
+    },
+    {
+      "id": "static_vs_moving",
+      "kind": "time",
+      "concept_ids": [
+        "locked_off"
+      ],
+      "rule_es": "Una toma fija no incorpora otra trayectoria simultánea; si cambia, dividirla en fases."
+    },
+    {
+      "id": "platform_is_not_motion",
+      "kind": "semantics",
+      "concept_ids": [
+        "drone_view",
+        "aerial_view"
+      ],
+      "rule_es": "Vista desde dron y vista aérea no especifican por sí mismas ni recorrido ni ángulo."
+    },
+    {
+      "id": "source_observations",
+      "kind": "evidence",
+      "rule_es": "Clasificar lo visible en frames y mantener como desconocido lo que no se pueda determinar. Una focal exacta o trayectoria completa no se deduce de una sola imagen."
+    },
+    {
+      "id": "preserve_scene_geometry",
+      "kind": "continuity",
+      "rule_es": "Mantener posiciones relativas, escala de utilería, dirección de miradas, manos, iluminación y eje de acción si el brief los conserva."
+    },
+    {
+      "id": "locked_source_camera",
+      "kind": "creative_scope",
+      "rule_es": "Si positive_prompt conserva cámara y encuadre, la base describe y refina esa toma; las alternativas de cámara quedan como propuestas separadas."
+    },
+    {
+      "id": "identity_lock",
+      "kind": "continuity",
+      "rule_es": "Reutilizar la misma identidad aprobada y sus rasgos en todas las tomas; una mejora de iluminación no autoriza rediseñar el rostro."
+    },
+    {
+      "id": "asset_role_separation",
+      "kind": "routing",
+      "rule_es": "Las láminas y storyboards alimentan el conocimiento del planificador. Sus rótulos, flechas, cuadrículas y sujetos de ejemplo no son referencias visuales para el comercial."
+    },
+    {
+      "id": "approved_frames_only",
+      "kind": "routing",
+      "rule_es": "Preparar y revisar los frames recreados antes de animarlos; el video original se utiliza únicamente en análisis y extracción de frames."
+    },
+    {
+      "id": "natural_language_aliases",
+      "kind": "prompt_compilation",
+      "rule_es": "Expandir /topdown, /lowangle y otros alias a descripciones. Su sintaxis no se presupone un comando nativo del proveedor."
+    },
+    {
+      "id": "duration_planning",
+      "kind": "timing",
+      "rule_es": "Separar duración de montaje y duración solicitada al generador. Si una toma necesita menos tiempo que el mínimo admitido, planificar generación compatible y recorte de montaje explícito."
+    },
+    {
+      "id": "motion_is_regenerated",
+      "kind": "expectations",
+      "rule_es": "Los frames condicionan apariencia y estados; la actuación y cámara se generan nuevamente y necesitan revisión temporal."
+    }
+  ],
+  "selection_policy": {
+    "strategy_es": "Seleccionar por intención de toma y por restricciones; un catálogo pequeño puede consultarse directamente por IDs y etiquetas.",
+    "retrieval_requires_embeddings": false,
+    "candidate_selection": [
+      {
+        "goal": "presentar el entorno",
+        "candidate_concepts": [
+          "long_shot",
+          "aerial_view",
+          "drone_pull_back"
+        ]
+      },
+      {
+        "goal": "reconocer al influencer y leer emoción",
+        "candidate_concepts": [
+          "bust_shot",
+          "close_up",
+          "eye_level",
+          "gentle_push_in"
+        ]
+      },
+      {
+        "goal": "mostrar uso de un producto",
+        "candidate_concepts": [
+          "pov",
+          "over_shoulder",
+          "high_angle"
+        ]
+      },
+      {
+        "goal": "resaltar textura o acabado",
+        "candidate_concepts": [
+          "extreme_close_up",
+          "macro_detail"
+        ]
+      },
+      {
+        "goal": "dar presencia al producto",
+        "candidate_concepts": [
+          "low_angle",
+          "close_up",
+          "front_shot"
+        ]
+      },
+      {
+        "goal": "mostrar disposición sobre mesa",
+        "candidate_concepts": [
+          "top_down"
+        ]
+      },
+      {
+        "goal": "subir intensidad permitida por el brief",
+        "candidate_concepts": [
+          "spiral_push_in",
+          "rapid_push_in"
+        ]
+      },
+      {
+        "goal": "priorizar lectura estable",
+        "candidate_concepts": [
+          "locked_off"
+        ]
+      }
+    ],
+    "application_es": "Elegir solo conceptos compatibles que aporten a la toma. Ofrecer variantes cuando esté habilitada la dirección creativa; no aplicar todos los recursos a cada anuncio."
+  },
+  "proposed_shot_record": {
+    "shot_id": "Identificador estable de la toma.",
+    "source_time_range_s": "Intervalo de procedencia del video original; null si es toma nueva.",
+    "source_observations": "Elementos observados, evidencia de frames y nivel de incertidumbre.",
+    "narrative_goal": "Función de la toma en el anuncio.",
+    "approved_asset_ids": "Identidad, producto, entorno y frames aprobados.",
+    "subject_action": "Acción y expresión del personaje, separadas de la cámara.",
+    "selected_concept_ids": "IDs del catálogo; validar compatibilidad.",
+    "camera_start": "Posición, objetivo, ángulo y escala de encuadre iniciales.",
+    "camera_end": "Posición y encuadre finales, si hay movimiento.",
+    "camera_path": "Trayectoria, sentido, velocidad y fases.",
+    "composition": "Ubicación de sujeto, producto, espacio libre y fondo.",
+    "focus_and_light": "Qué debe leerse nítido y cómo incide la luz.",
+    "continuity_locks": "Identidad, geometría, utilería, dirección de mirada y luz.",
+    "preserve": "Instrucciones positive aplicables a esta toma.",
+    "remove_or_replace": "Instrucciones restrictive aplicables.",
+    "avoid": "Instrucciones negative aplicables.",
+    "creative_changes": "Cambios propuestos y su motivación.",
+    "output_aspect_ratio": "Formato final del video, independiente de 4:5 para Nano Banana Pro.",
+    "generation_duration_s": "Duración compatible con el catálogo del generador.",
+    "edit_duration_s": "Duración prevista en el montaje.",
+    "image_prompt": "Prompt de frame para Nano Banana Pro.",
+    "video_prompt": "Prompt de movimiento y actuación para Seedance.",
+    "review_findings": "Observaciones de revisión visual; nunca aprobación ficticia.",
+    "status": "draft | frame_review | frame_approved | video_review | accepted"
+  },
+  "prompt_templates": {
+    "nano_banana_pro_en": "Create a single photorealistic commercial still using the approved character and scene references. SUBJECT AND IDENTITY: {identity_lock}. ACTION AT THIS INSTANT: {subject_action_frame}. CAMERA: {camera_start}. FRAMING AND COMPOSITION: {framing_composition}. LIGHT AND FOCUS: {light_focus}. PRESERVE: {preserve}. REMOVE OR REPLACE: {remove_or_replace}. CREATIVE CHANGES: {creative_changes}. AVOID: {avoid}. Render one image at the configured 4:5 aspect ratio and 2K resolution.",
+    "seedance_2_5_en": "Create a new commercial shot using only the attached approved still images as visual references. IDENTITY AND SCENE: {identity_scene_locks}. START: {camera_start}. SUBJECT ACTION: {subject_action_timeline}. CAMERA PATH AND PACE: {camera_path}. END: {camera_end}. PRESERVE THROUGHOUT: {preserve}. KEEP REMOVED ELEMENTS ABSENT: {removed_elements}. AVOID: {avoid}. TIMING: {generation_timing}. AUDIO DIRECTION: {audio_direction}. Maintain the approved product geometry, readable branding where required, and spatial continuity.",
+    "compilation_rules_es": [
+      "Las plantillas son propuestas del proyecto, no sintaxis oficial del proveedor.",
+      "Usar referencias identificadas inequívocamente y describir los rasgos que deben mantenerse.",
+      "Omitir campos vacíos y resolver instrucciones contradictorias.",
+      "Para imágenes describir un instante; reservar trayectorias y tiempos para el prompt de video.",
+      "No incluir rótulos didácticos, flechas de storyboard ni la lata o el gato de las láminas salvo petición explícita.",
+      "El formato y resolución se envían además como parámetros del modelo.",
+      "Comprobar que todos los medios enviados a Seedance son imágenes y que el modo no es video_edit ni video_extension."
+    ]
+  },
+  "integration_plan": {
+    "component_name": "AdsArt Camera Knowledge",
+    "component_status": "proposed_not_installed",
+    "knowledge_file": "ads_art_camera_knowledge_v1.json",
+    "steps_es": [
+      "Cargar este JSON como recurso del futuro nodo de planificación de tomas.",
+      "Analizar el video de entrada y seleccionar frames con marcas de tiempo.",
+      "Crear o reutilizar la identidad hiperrealista aprobada.",
+      "Clasificar encuadres y acciones con la taxonomía; añadir objetivos y restricciones del usuario.",
+      "Elegir conceptos compatibles y redactar un registro de toma explícito.",
+      "Generar y revisar frames con Nano Banana Pro.",
+      "Construir una solicitud Seedance con imágenes y prompt exclusivamente, validando los medios antes de enviarla.",
+      "Revisar el clip; reintentar solo la toma afectada y conservar las referencias aprobadas.",
+      "Montar clips, audio y textos finales según el plan."
+    ],
+    "update_policy_es": "Versionar cambios del catálogo y conservar las versiones de planes usados en cada generación.",
+    "persistence_es": "Guardar IDs de trabajos, prompts y referencias aprobadas por toma para evitar repetir generaciones ya aceptadas."
+  },
+  "illustrative_example": {
+    "origin": "assistant_authored_example_not_analyzed_footage",
+    "shot_id": "example_influencer_hero",
+    "narrative_goal": "Presentar a la influencer derivada de la Mona Lisa con un producto.",
+    "selected_concept_ids": [
+      "eye_level",
+      "bust_shot",
+      "front_shot",
+      "rule_of_thirds",
+      "gentle_push_in"
+    ],
+    "frame_direction_es": "Plano de busto frontal de la identidad hiperrealista aprobada. Cámara a la altura de los ojos. Producto visible sin tapar su etiqueta. Mantener el escenario de referencia.",
+    "motion_direction_es": "Acercamiento suave durante cinco segundos. La influencer mira brevemente el producto y vuelve a cámara con una sonrisa contenida. Mantener la forma del producto y la posición de las manos.",
+    "preserve_es": [
+      "Identidad aprobada",
+      "Envase y etiqueta de referencia",
+      "Geometría del escenario"
+    ],
+    "remove_or_replace_es": [
+      "Sustituir al intérprete original por la identidad aprobada"
+    ],
+    "avoid_es": [
+      "Rostro cambiante",
+      "Piel plástica",
+      "Dedos adicionales",
+      "Deformación del envase"
+    ],
+    "generation_duration_s": 5,
+    "status": "draft"
+  }
+}
