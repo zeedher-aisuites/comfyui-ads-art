@@ -1,8 +1,8 @@
 {
   "id": "ads-art-prepare-v1",
-  "revision": 1,
-  "last_node_id": 24,
-  "last_link_id": 26,
+  "revision": 2,
+  "last_node_id": 26,
+  "last_link_id": 28,
   "nodes": [
     {
       "id": 1,
@@ -28,7 +28,7 @@
       ],
       "title": "1 — Project controls & contradiction gate",
       "properties": {"Node name for S&R": "AdsArtProjectConfig"},
-      "widgets_values": ["ads_art_project_001", "", "", "", "", "auto", "1080p", false],
+      "widgets_values": ["ads_art_project_001", "Prioritize up to three visually distinct shots with one adult protagonist alone, an unobstructed face, and an angle compatible with Madame X's profile.", "Do not invent or assume a product, brand, logo, packaging, claims, or typography. Mark every product and brand decision as pending unless explicitly supplied by the user.", "", "", "auto", "1080p", false],
       "color": "#3b2d46",
       "bgcolor": "#563e69"
     },
@@ -523,7 +523,7 @@
         {"name": "approved_identity", "type": "IMAGE", "shape": 7, "link": 24}
       ],
       "outputs": [
-        {"name": "analysis", "type": "ADS_ART_ANALYSIS", "slot_index": 0, "links": [5, 25]},
+        {"name": "analysis", "type": "ADS_ART_ANALYSIS", "slot_index": 0, "links": [5, 25, 27, 28]},
         {"name": "proposed_frames", "type": "IMAGE", "slot_index": 1, "links": [16]},
         {"name": "analysis_status", "type": "STRING", "slot_index": 2, "links": []},
         {"name": "prompt_preview", "type": "STRING", "slot_index": 3, "links": []}
@@ -569,6 +569,78 @@
       "widgets_values": [1, "", "", "", "", "", "", "", "", "", "", "", ""],
       "color": "#3b2d46",
       "bgcolor": "#563e69"
+    },
+    {
+      "id": 25,
+      "type": "AdsArtGeminiShotDraft",
+      "pos": [220, -1050],
+      "size": [540, 740],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {"name": "analysis", "type": "ADS_ART_ANALYSIS", "link": 27},
+        {"name": "shot_number", "type": "INT", "widget": {"name": "shot_number"}, "link": null},
+        {"name": "manual_objective", "type": "STRING", "widget": {"name": "manual_objective"}, "link": null},
+        {"name": "manual_action", "type": "STRING", "widget": {"name": "manual_action"}, "link": null},
+        {"name": "manual_camera_concepts", "type": "STRING", "widget": {"name": "manual_camera_concepts"}, "link": null},
+        {"name": "manual_framing_and_composition", "type": "STRING", "widget": {"name": "manual_framing_and_composition"}, "link": null},
+        {"name": "manual_lighting", "type": "STRING", "widget": {"name": "manual_lighting"}, "link": null},
+        {"name": "manual_elements_to_preserve", "type": "STRING", "widget": {"name": "manual_elements_to_preserve"}, "link": null},
+        {"name": "manual_planned_changes", "type": "STRING", "widget": {"name": "manual_planned_changes"}, "link": null},
+        {"name": "manual_nano_banana_prompt", "type": "STRING", "widget": {"name": "manual_nano_banana_prompt"}, "link": null},
+        {"name": "manual_seedance_performance", "type": "STRING", "widget": {"name": "manual_seedance_performance"}, "link": null},
+        {"name": "manual_seedance_camera_movement", "type": "STRING", "widget": {"name": "manual_seedance_camera_movement"}, "link": null},
+        {"name": "manual_seedance_rhythm", "type": "STRING", "widget": {"name": "manual_seedance_rhythm"}, "link": null},
+        {"name": "manual_seedance_continuity", "type": "STRING", "widget": {"name": "manual_seedance_continuity"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "shot_draft", "type": "ADS_ART_SHOT_DRAFT", "slot_index": 0, "links": []},
+        {"name": "selected_frame", "type": "IMAGE", "slot_index": 1, "links": []},
+        {"name": "frame_prompt", "type": "STRING", "slot_index": 2, "links": []},
+        {"name": "seedance_prompt", "type": "STRING", "slot_index": 3, "links": []}
+      ],
+      "title": "3b — Editable Gemini shot 2",
+      "properties": {"Node name for S&R": "AdsArtGeminiShotDraft"},
+      "widgets_values": [2, "", "", "", "", "", "", "", "", "", "", "", ""],
+      "color": "#3b2d46",
+      "bgcolor": "#563e69"
+    },
+    {
+      "id": 26,
+      "type": "AdsArtGeminiShotDraft",
+      "pos": [820, -1050],
+      "size": [540, 740],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {"name": "analysis", "type": "ADS_ART_ANALYSIS", "link": 28},
+        {"name": "shot_number", "type": "INT", "widget": {"name": "shot_number"}, "link": null},
+        {"name": "manual_objective", "type": "STRING", "widget": {"name": "manual_objective"}, "link": null},
+        {"name": "manual_action", "type": "STRING", "widget": {"name": "manual_action"}, "link": null},
+        {"name": "manual_camera_concepts", "type": "STRING", "widget": {"name": "manual_camera_concepts"}, "link": null},
+        {"name": "manual_framing_and_composition", "type": "STRING", "widget": {"name": "manual_framing_and_composition"}, "link": null},
+        {"name": "manual_lighting", "type": "STRING", "widget": {"name": "manual_lighting"}, "link": null},
+        {"name": "manual_elements_to_preserve", "type": "STRING", "widget": {"name": "manual_elements_to_preserve"}, "link": null},
+        {"name": "manual_planned_changes", "type": "STRING", "widget": {"name": "manual_planned_changes"}, "link": null},
+        {"name": "manual_nano_banana_prompt", "type": "STRING", "widget": {"name": "manual_nano_banana_prompt"}, "link": null},
+        {"name": "manual_seedance_performance", "type": "STRING", "widget": {"name": "manual_seedance_performance"}, "link": null},
+        {"name": "manual_seedance_camera_movement", "type": "STRING", "widget": {"name": "manual_seedance_camera_movement"}, "link": null},
+        {"name": "manual_seedance_rhythm", "type": "STRING", "widget": {"name": "manual_seedance_rhythm"}, "link": null},
+        {"name": "manual_seedance_continuity", "type": "STRING", "widget": {"name": "manual_seedance_continuity"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "shot_draft", "type": "ADS_ART_SHOT_DRAFT", "slot_index": 0, "links": []},
+        {"name": "selected_frame", "type": "IMAGE", "slot_index": 1, "links": []},
+        {"name": "frame_prompt", "type": "STRING", "slot_index": 2, "links": []},
+        {"name": "seedance_prompt", "type": "STRING", "slot_index": 3, "links": []}
+      ],
+      "title": "3c — Editable Gemini shot 3",
+      "properties": {"Node name for S&R": "AdsArtGeminiShotDraft"},
+      "widgets_values": [3, "", "", "", "", "", "", "", "", "", "", "", ""],
+      "color": "#3b2d46",
+      "bgcolor": "#563e69"
     }
   ],
   "links": [
@@ -597,7 +669,9 @@
     [23, 1, 0, 23, 0, "ADS_ART_PROJECT"],
     [24, 9, 0, 23, 14, "IMAGE"],
     [25, 23, 0, 24, 0, "ADS_ART_ANALYSIS"],
-    [26, 24, 0, 11, 14, "ADS_ART_SHOT_DRAFT"]
+    [26, 24, 0, 11, 14, "ADS_ART_SHOT_DRAFT"],
+    [27, 23, 0, 25, 0, "ADS_ART_ANALYSIS"],
+    [28, 23, 0, 26, 0, "ADS_ART_ANALYSIS"]
   ],
   "groups": [
     {"id": 1, "title": "Staged workflow — submit and recovery nodes are OFF by default", "bounding": [-1540, -420, 3290, 2640], "color": "#6b5b7a", "font_size": 24, "flags": {}}

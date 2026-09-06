@@ -332,6 +332,33 @@ class AdsArtTests(unittest.TestCase):
         self.assertIsNone(cost["observed_charge_usd"])
         self.assertTrue(cost["pricing"]["estimate_only"])
 
+    def test_gemini_audio_tokens_use_separate_rate(self):
+        cost = GEMINI.estimate_standard_paid_cost(
+            {
+                "prompt_token_count": 2_000,
+                "candidates_token_count": 100,
+                "thoughts_token_count": 50,
+                "prompt_tokens_details": [
+                    {"modality": "VIDEO", "token_count": 720},
+                    {"modality": "AUDIO", "token_count": 1_280},
+                ],
+            },
+            audio_included=True,
+            duration_seconds=40.0,
+        )
+        breakdown = cost["input_breakdown"]
+        self.assertEqual(breakdown["audio_tokens_billed_at_audio_input_rate"], 1_280)
+        self.assertEqual(
+            breakdown["text_image_video_tokens_billed_at_standard_input_rate"], 720
+        )
+        self.assertEqual(breakdown["audio_token_source"], "provider_reported_modality")
+        self.assertAlmostEqual(cost["amount_usd"], 0.001871)
+
+    def test_gemini_first_run_limits_are_explicit(self):
+        self.assertEqual(GEMINI.GEMINI_GENERATION_CONFIG["video_sampling_fps"], 2.0)
+        self.assertEqual(GEMINI.GEMINI_GENERATION_CONFIG["thinking_budget"], 2048)
+        self.assertEqual(GEMINI.GEMINI_GENERATION_CONFIG["max_output_tokens"], 8192)
+
     def test_gemini_prepare_local_only_makes_zero_remote_calls(self):
         video_path = self.make_synthetic_video("gemini_preflight.mp4")
         project = CORE.make_project(

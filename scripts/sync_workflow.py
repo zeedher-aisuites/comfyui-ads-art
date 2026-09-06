@@ -21,7 +21,7 @@ DEFAULT_TEMPLATE = REPO_ROOT / "workflows" / "ads_art_prepare_v1.json"
 DEFAULT_INSTALLED = (
     COMFY_ROOT / "user" / "default" / "workflows" / "Ads Art" / "ads_art_prepare_v1.json"
 )
-ACTIVE_PREFLIGHT_NODE_IDS = {1, 4, 5, 9, 23, 24}
+ACTIVE_PREFLIGHT_NODE_IDS = {1, 4, 5, 9, 23, 24, 25, 26}
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -76,6 +76,8 @@ def merge_workflow(
     installed: dict[str, Any],
     *,
     identity_image: str | None = None,
+    positive_prompt: str | None = None,
+    restrictive_prompt: str | None = None,
 ) -> dict[str, Any]:
     result = copy.deepcopy(template)
     previous = {int(item["id"]): item for item in installed.get("nodes", [])}
@@ -110,6 +112,10 @@ def merge_workflow(
                 _set_widget(node, "identity_approved", True)
         if int(node["id"]) == 9 and identity_image:
             _set_widget(node, "image", identity_image)
+        if int(node["id"]) == 1 and positive_prompt is not None:
+            _set_widget(node, "positive_prompt", positive_prompt)
+        if int(node["id"]) == 1 and restrictive_prompt is not None:
+            _set_widget(node, "restrictive_prompt", restrictive_prompt)
 
     next_link = int(result.get("last_link_id", 0))
     extra_ids = {int(item["id"]) for item in extras}
@@ -148,6 +154,8 @@ def main() -> int:
     parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
     parser.add_argument("--installed", type=Path, default=DEFAULT_INSTALLED)
     parser.add_argument("--identity-image", default=None)
+    parser.add_argument("--positive-prompt", default=None)
+    parser.add_argument("--restrictive-prompt", default=None)
     args = parser.parse_args()
 
     template = _read(args.template.resolve())
@@ -157,6 +165,8 @@ def main() -> int:
         template,
         installed,
         identity_image=args.identity_image,
+        positive_prompt=args.positive_prompt,
+        restrictive_prompt=args.restrictive_prompt,
     )
     installed_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = installed_path.with_suffix(installed_path.suffix + ".tmp")

@@ -96,9 +96,12 @@ procesamiento/inferencia, uso de tokens reportado y resultado de validaciones lo
 
 La estimación monetaria sólo se calcula después de recibir tokens reportados. Usa la
 tarifa Standard verificada para Gemini 2.5 Flash: USD 0.30 por millón de tokens de
-entrada de texto/imagen/video y USD 2.50 por millón de tokens de salida, incluido
-thinking. Se etiqueta como estimación; `observed_charge_usd` queda `null` porque la
-respuesta de generación no constituye una factura.
+entrada de texto/imagen/video, USD 1.00 por millón de tokens de audio y USD 2.50 por
+millón de tokens de salida, incluido thinking. Los tokens `AUDIO` se separan de los de
+video; si el proveedor omite ese detalle, la estimación marca y usa el fallback
+documentado de 32 tokens de audio por segundo. Se etiqueta como estimación;
+`observed_charge_usd` queda `null` porque la respuesta de generación no constituye una
+factura.
 
 Fuente: <https://ai.google.dev/gemini-api/docs/pricing>
 
@@ -112,3 +115,17 @@ desde `ComfyUI/input`. Está limitado a tres tomas y conserva
 El preflight local real midió 40.0 s, 1280 × 720, detectó 17 cortes y extrajo tres
 candidatos a 1.72 s, 20.60 s y 39.28 s. No ejecutó llamadas remotas; los tres siguen
 pendientes de revisión visual.
+
+## Primera prueba remota
+
+El 2026-09-06 se confirmó una sola ejecución sobre Dior. Files API aceptó y procesó el
+video, pero `generateContent` respondió `404 NOT_FOUND`: `gemini-2.5-flash` ya no está
+disponible para esta cuenta clasificada por Google como usuario nuevo. No hubo fallback,
+reintento ni respuesta estructurada; el archivo remoto se eliminó. El workflow volvió a
+`confirm_gemini_analysis=false` y el marcador conservador `analysis_unknown` bloquea
+una repetición accidental.
+
+Consulte [`GEMINI_TEST_REPORT_2026-09-06.md`](GEMINI_TEST_REPORT_2026-09-06.md) para
+la cronología, tiempos, uso no reportado y estado final. Cambiar al modelo recomendado
+por la respuesta del proveedor requiere verificación documental y autorización expresa;
+Ads Art no sustituye el modelo silenciosamente.

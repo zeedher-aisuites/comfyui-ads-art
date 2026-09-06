@@ -26,7 +26,9 @@ GEMINI_SDK_REQUIREMENT = "google-genai>=2.22.0,<3"
 GEMINI_GENERATION_CONFIG = {
     "response_mime_type": "application/json",
     "temperature": 0.2,
-    "max_output_tokens": 16384,
+    "max_output_tokens": 8192,
+    "thinking_budget": 2048,
+    "video_sampling_fps": 2.0,
 }
 
 # Verified against the official Gemini Developer API pricing page on
@@ -35,6 +37,7 @@ GEMINI_GENERATION_CONFIG = {
 GEMINI_STANDARD_PRICING = {
     "currency": "USD",
     "input_text_image_video_per_million_tokens": 0.30,
+    "input_audio_per_million_tokens": 1.00,
     "output_including_thinking_per_million_tokens": 2.50,
     "source": "https://ai.google.dev/gemini-api/docs/pricing",
     "verified_on": "2026-09-06",
@@ -390,7 +393,7 @@ def validate_gemini_response(
     return response
 
 
-def extract_usage_metadata(response: Any) -> dict[str, int | None]:
+def extract_usage_metadata(response: Any) -> dict[str, Any]:
     metadata = getattr(response, "usage_metadata", None)
 
     def value(*names: str) -> int | None:
@@ -404,6 +407,21 @@ def extract_usage_metadata(response: Any) -> dict[str, int | None]:
                 return int(candidate)
         return None
 
+    def details(*names: str) -> list[dict[str, Any]]:
+        raw = None
+        for name in names:
+            raw = metadata.get(name) if isinstance(metadata, dict) else getattr(metadata, name, None)
+            if raw is not None:
+                break
+        result = []
+        for item in raw or []:
+            modality = item.get("modality") if isinstance(item, dict) else getattr(item, "modality", None)
+            token_count = item.get("token_count") if isinstance(item, dict) else getattr(item, "token_count", None)
+            modality = getattr(modality, "value", modality)
+            if isinstance(token_count, (int, float)):
+                result.append({"modality": str(modality or "MODALITY_UNSPECIFIED").upper(), "token_count": int(token_count)})
+        return result
+
     return {
         "prompt_token_count": value("prompt_token_count", "promptTokenCount"),
         "candidates_token_count": value("candidates_token_count", "candidatesTokenCount"),
@@ -412,27 +430,73 @@ def extract_usage_metadata(response: Any) -> dict[str, int | None]:
             "cached_content_token_count", "cachedContentTokenCount"
         ),
         "total_token_count": value("total_token_count", "totalTokenCount"),
+        "prompt_tokens_details": details("prompt_tokens_details", "promptTokensDetails"),
+        "candidates_tokens_details": details(
+            "candidates_tokens_details", "candidatesTokensDetails"
+        ),
     }
 
 
-def estimate_standard_paid_cost(usage: dict[str, int | None]) -> dict[str, Any]:
+def estimate_standard_paid_cost(
+    usage: dict[str, Any],
+    *,
+    audio_included: bool = False,
+    duration_seconds: float | None = None,
+) -> dict[str, Any]:
     input_tokens = usage.get("prompt_token_count")
     candidate_tokens = usage.get("candidates_token_count")
     thoughts_tokens = usage.get("thoughts_token_count") or 0
+    details = usage.get("prompt_tokens_details") or []
+    by_modality: dict[str, int] = {}
+    for item in details:
+        modality = str(item.get("modality", "MODALITY_UNSPECIFIED")).upper()
+        by_modality[modality] = by_modality.get(modality, 0) + int(item.get("token_count", 0) or 0)
+
     if input_tokens is None or candidate_tokens is None:
         amount = None
+        input_breakdown = None
     else:
-        amount = round(
-            (input_tokens / 1_000_000)
+        audio_tokens = int(by_modality.get("AUDIO", 0))
+        audio_method = "provider_reported_modality"
+        if audio_included and audio_tokens == 0 and duration_seconds is not None:
+            audio_tokens = min(int(input_tokens), round(float(duration_seconds) * 32))
+            audio_method = "documented_32_audio_tokens_per_second_fallback"
+        elif not audio_included:
+            audio_tokens = 0
+            audio_method = "audio_not_included"
+        standard_tokens = max(int(input_tokens) - audio_tokens, 0)
+        standard_cost = (
+            standard_tokens
+            / 1_000_000
             * GEMINI_STANDARD_PRICING["input_text_image_video_per_million_tokens"]
-            + ((candidate_tokens + thoughts_tokens) / 1_000_000)
-            * GEMINI_STANDARD_PRICING["output_including_thinking_per_million_tokens"],
-            9,
         )
+        audio_cost = (
+            audio_tokens
+            / 1_000_000
+            * GEMINI_STANDARD_PRICING["input_audio_per_million_tokens"]
+        )
+        output_tokens = int(candidate_tokens) + int(thoughts_tokens)
+        output_cost = (
+            output_tokens
+            / 1_000_000
+            * GEMINI_STANDARD_PRICING["output_including_thinking_per_million_tokens"]
+        )
+        amount = round(standard_cost + audio_cost + output_cost, 9)
+        input_breakdown = {
+            "provider_reported_by_modality": by_modality,
+            "text_image_video_tokens_billed_at_standard_input_rate": standard_tokens,
+            "audio_tokens_billed_at_audio_input_rate": audio_tokens,
+            "audio_token_source": audio_method,
+            "text_image_video_cost_usd": round(standard_cost, 9),
+            "audio_cost_usd": round(audio_cost, 9),
+            "output_tokens_including_thinking": output_tokens,
+            "output_cost_usd": round(output_cost, 9),
+        }
     return {
         "kind": "estimated_paid_standard_from_reported_tokens",
         "amount_usd": amount,
         "observed_charge_usd": None,
+        "input_breakdown": input_breakdown,
         "pricing": GEMINI_STANDARD_PRICING,
     }
 
@@ -463,6 +527,8 @@ def call_gemini_analysis(
     system_instruction: str,
     prompt: str,
     response_schema: dict[str, Any],
+    source_has_audio: bool,
+    duration_seconds: float,
     upload_retries: int = 2,
     file_poll_attempts: int = 60,
 ) -> dict[str, Any]:
@@ -504,7 +570,16 @@ def call_gemini_analysis(
             raise AdsArtError("Gemini Files API no activó el video dentro del límite.")
         timings["file_processing_seconds"] = round(time.monotonic() - processing_started, 3)
 
-        contents: list[Any] = [uploaded]
+        video_part = types.Part(
+            file_data=types.FileData(
+                file_uri=uploaded.uri,
+                mime_type=(uploaded.mime_type or mimetypes.guess_type(source.name)[0] or "video/mp4"),
+            ),
+            video_metadata=types.VideoMetadata(
+                fps=GEMINI_GENERATION_CONFIG["video_sampling_fps"]
+            ),
+        )
+        contents: list[Any] = [video_part]
         if identity is not None:
             mime_type = mimetypes.guess_type(identity.name)[0] or "image/png"
             contents.append(types.Part.from_bytes(data=identity.read_bytes(), mime_type=mime_type))
@@ -521,6 +596,9 @@ def call_gemini_analysis(
                 "response_json_schema": response_schema,
                 "temperature": GEMINI_GENERATION_CONFIG["temperature"],
                 "max_output_tokens": GEMINI_GENERATION_CONFIG["max_output_tokens"],
+                "thinking_config": {
+                    "thinking_budget": GEMINI_GENERATION_CONFIG["thinking_budget"]
+                },
             },
         )
         timings["inference_seconds"] = round(time.monotonic() - inference_started, 3)
@@ -535,7 +613,11 @@ def call_gemini_analysis(
         return {
             "response": parsed,
             "usage": usage,
-            "cost_estimate": estimate_standard_paid_cost(usage),
+            "cost_estimate": estimate_standard_paid_cost(
+                usage,
+                audio_included=bool(source_has_audio),
+                duration_seconds=float(duration_seconds),
+            ),
             "timings": timings,
             "provider": {
                 "model_requested": GEMINI_MODEL_ID,
@@ -549,6 +631,12 @@ def call_gemini_analysis(
                     "upload_retries": max(1, min(int(upload_retries), 2)),
                     "file_poll_attempts": max(1, min(int(file_poll_attempts), 120)),
                     "approved_identity_supplied": identity is not None,
+                    "source_audio_included": bool(source_has_audio),
+                    "source_audio_processing": (
+                        "Gemini video input audio stream, documented 1 Kbps mono / 32 tokens per second"
+                        if source_has_audio
+                        else "no audio stream detected"
+                    ),
                 },
             },
         }

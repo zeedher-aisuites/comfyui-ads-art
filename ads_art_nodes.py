@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -617,6 +618,7 @@ class AdsArtGeminiAnalyzeCommercial:
         file_poll_attempts,
         approved_identity=None,
     ):
+        node_started = time.monotonic()
         project_data = parse_json(project, "project")
         if model != GEMINI_MODEL_ID:
             raise AdsArtError(
@@ -657,6 +659,17 @@ class AdsArtGeminiAnalyzeCommercial:
             "height": metadata["height"],
             "fps": metadata["fps"],
             "has_audio": metadata["has_audio"],
+            "gemini_video_processing": {
+                "mode": "static_generate_content",
+                "video_sampling_fps": GEMINI_GENERATION_CONFIG["video_sampling_fps"],
+                "audio_included": bool(metadata["has_audio"]),
+                "audio_processing": (
+                    "File API audio stream; documented 1 Kbps mono and 32 tokens/second"
+                    if metadata["has_audio"]
+                    else "no audio stream detected"
+                ),
+                "audio_pricing_is_separate_from_video": True,
+            },
             "detector": {
                 "type": "local_mean_absolute_visual_change",
                 "scene_threshold": float(scene_threshold),
@@ -674,6 +687,7 @@ class AdsArtGeminiAnalyzeCommercial:
             adaptation_mode,
             identity_was_supplied,
         )
+        local_preflight_seconds = round(time.monotonic() - node_started, 3)
         signature = {
             "video_sha256": sha256_file(source),
             "video_bytes": source.stat().st_size,
@@ -757,6 +771,8 @@ class AdsArtGeminiAnalyzeCommercial:
                 system_instruction=system_instruction,
                 prompt=prompt,
                 response_schema=gemini_analysis_schema(max_shots),
+                source_has_audio=bool(metadata["has_audio"]),
+                duration_seconds=duration,
                 upload_retries=int(upload_retries),
                 file_poll_attempts=int(file_poll_attempts),
             )
@@ -766,6 +782,7 @@ class AdsArtGeminiAnalyzeCommercial:
                 max_shots=max_shots,
                 allowed_camera_ids={item["id"] for item in knowledge["concepts"]},
             )
+            extraction_started = time.monotonic()
             analysis = self._materialize_response(
                 project_data=project_data,
                 source=source,
@@ -779,6 +796,13 @@ class AdsArtGeminiAnalyzeCommercial:
                 prompt=prompt,
                 system_instruction=system_instruction,
                 identity_was_supplied=identity_was_supplied,
+            )
+            call_result["timings"]["frame_extraction_seconds"] = round(
+                time.monotonic() - extraction_started, 3
+            )
+            call_result["timings"]["local_preflight_seconds"] = local_preflight_seconds
+            call_result["timings"]["total_node_seconds"] = round(
+                time.monotonic() - node_started, 3
             )
         except Exception as exc:
             started_marker.update(
@@ -900,6 +924,7 @@ class AdsArtGeminiAnalyzeCommercial:
                 "identity_supplied": identity_was_supplied,
                 "system_instruction": system_instruction,
                 "prompt": prompt,
+                "generation_config": GEMINI_GENERATION_CONFIG,
                 "response": None,
                 "usage": None,
                 "cost": {
@@ -1007,6 +1032,7 @@ class AdsArtGeminiAnalyzeCommercial:
                 "identity_supplied": identity_was_supplied,
                 "system_instruction": system_instruction,
                 "prompt": prompt,
+                "generation_config": GEMINI_GENERATION_CONFIG,
                 "response": response,
                 "provider": call_result["provider"],
                 "timings": call_result["timings"],
@@ -1025,6 +1051,12 @@ class AdsArtGeminiAnalyzeCommercial:
             f"Caché: {'REUTILIZADA' if cache_hit else 'sin coincidencia reutilizada'}",
             f"Tomas propuestas: {len(analysis.get('shots', []))}",
             "Aprobaciones visuales inferidas: NO",
+            (
+                "Gemini video: "
+                f"{GEMINI_GENERATION_CONFIG['video_sampling_fps']:.1f} FPS | "
+                f"max_output_tokens={GEMINI_GENERATION_CONFIG['max_output_tokens']} | "
+                f"thinking_budget={GEMINI_GENERATION_CONFIG['thinking_budget']}"
+            ),
         ]
         if status == "PREPARED_NOT_CALLED":
             lines.append("Llamadas remotas: 0. Active confirm_gemini_analysis sólo para ejecutar.")
@@ -1034,6 +1066,22 @@ class AdsArtGeminiAnalyzeCommercial:
                 f"- {shot['shot_id']}: {shot['start_seconds']:.3f}-{shot['end_seconds']:.3f}s | "
                 f"frame {shot['representative_timestamp']:.3f}s | {reason}"
             )
+            observed = shot.get("gemini_observed") or {}
+            proposal = shot.get("gemini_proposal") or {}
+            if observed.get("description"):
+                lines.append("  OBSERVADO: " + str(observed["description"]))
+            if proposal:
+                lines.extend(
+                    [
+                        "  PROPUESTA: " + str(proposal.get("objective", "")),
+                        "  PROMPT NANO BANANA PRO: "
+                        + str(proposal.get("nano_banana_prompt", "")),
+                        "  DIRECCIÓN SEEDANCE: "
+                        + json_dumps(proposal.get("seedance", {})),
+                    ]
+                )
+            if shot.get("uncertainties"):
+                lines.append("  PENDIENTE: " + " | ".join(shot["uncertainties"]))
         missing = analysis.get("global_missing_information", [])
         if missing:
             lines.append("Información faltante: " + " | ".join(missing))

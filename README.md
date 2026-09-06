@@ -153,12 +153,15 @@ confirmaciones de Higgsfield descritas arriba.
 - `scripts/sync_workflow.py`: actualiza la copia instalada conservando widgets personales.
 - `tests/test_ads_art.py`: restricciones, Gemini local, conocimiento y conexiones del workflow.
 
-## Pruebas que requieren medios o autorización
+## Estado de la prueba remota
 
-La integración y el preflight Dior se probaron sin llamadas remotas. El SDK
-`google-genai==2.22.0` ya quedó instalado y sus interfaces usadas por Ads Art fueron
-comprobadas localmente. Se detectó `GEMINI_API_KEY` sin leer su valor, pero no se probó
-la autenticación efectiva. Para el primer análisis Gemini real falta reiniciar ComfyUI
-asegurando que herede esa variable y activar una sola vez
-`confirm_gemini_analysis`. No se lanzó ninguna generación Higgsfield. El montaje sigue
-necesitando clips resultantes reales y un `ffmpeg` compatible.
+La instancia habitual de ComfyUI y la clave privada se probaron con una única ejecución
+remota. Files API aceptó el video, pero `gemini-2.5-flash` respondió `404 NOT_FOUND`
+porque no está disponible para esta cuenta. Ads Art no cambió de modelo, no repitió la
+inferencia y eliminó el archivo remoto. No se lanzó ninguna generación Higgsfield.
+
+El informe reproducible está en
+[`GEMINI_TEST_REPORT_2026-09-06.md`](GEMINI_TEST_REPORT_2026-09-06.md). Para obtener el
+primer análisis semántico falta verificar y autorizar expresamente otro identificador
+Flash; el proveedor recomendó `gemini-3.6-flash`, pero no se adopta automáticamente.
+El montaje sigue necesitando clips resultantes reales y un `ffmpeg` compatible.

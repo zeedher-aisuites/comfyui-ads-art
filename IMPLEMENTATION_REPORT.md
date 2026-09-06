@@ -7,8 +7,10 @@ Fecha de verificación: 2026-09-06
 Ads Art incorpora una primera integración funcional con Gemini para preparar el análisis
 del comercial, proponer hasta el número configurado de tomas, generar borradores de
 prompts de frame y movimiento y conectarlos con los planificadores existentes. La
-implementación está lista para una prueba remota, pero durante esta etapa sólo se ejecutó
-el preflight local: cero llamadas a Gemini y cero generaciones Higgsfield.
+implementación completó el preflight local y una única prueba remota autorizada. Files
+API aceptó el comercial, pero Google rechazó la inferencia con `404 NOT_FOUND` porque
+`gemini-2.5-flash` ya no está disponible para esta cuenta. No hubo respuesta semántica,
+reintento ni generaciones Higgsfield.
 
 El modelo está fijado a `gemini-2.5-flash`. La documentación oficial vigente declara
 entradas de video e imagen y structured outputs para este identificador. No hay alias,
@@ -68,7 +70,7 @@ sustitución ni fallback silencioso.
 - Instalación local de `google-genai==2.22.0` en `venv_comfy` y comprobación, sin red
   de inferencia, de las firmas `files.upload/get/delete`, `models.generate_content`,
   `response_json_schema` y `Part.from_bytes`.
-- 26 pruebas automatizadas: políticas de
+- 28 pruebas automatizadas: políticas de
   imagen/video, anti-duplicado, recuperación, detector local, modelo y esquema Gemini,
   timestamps, coste, clave ausente, preflight con cero llamadas y persistencia de
   overrides, actualización del prompt Seedance y sincronización segura del workflow.
@@ -86,9 +88,18 @@ sustitución ni fallback silencioso.
   conservado en el proyecto.
 - El workflow instalado preserva exactamente las `identity_notes` y los IDs de request/
   job de la generación de identidad anterior.
-- El preflight detectó que `GEMINI_API_KEY` existe en el entorno del proceso de prueba,
-  sin leer ni registrar su valor. La autenticación efectiva no se comprobó porque eso
-  habría requerido una llamada a Google.
+- La instancia habitual detectó `GEMINI_API_KEY` sin leer ni registrar su valor. La
+  subida autenticada a Files API respondió 200, por lo que la clave funcionó para esa
+  operación; la inferencia falló después por disponibilidad del modelo, no por
+  autenticación.
+- Una sola ejecución remota mediante el nodo 23 de ComfyUI:
+
+  - ID `b7007d5e-660b-47a4-941b-412fd917c60c`;
+  - preflight local 11.258 s, etapa remota 21.838 s y total 33.195 s;
+  - subida y procesamiento aceptados, un intento `generateContent`, respuesta 404;
+  - archivo remoto eliminado y `automatic_retry_performed=false`;
+  - sin `usageMetadata`, tokens, coste estimado ni cargo observado;
+  - estado conservador `analysis_unknown`, que bloquea duplicados.
 
 ## Costes y medición
 
@@ -98,30 +109,34 @@ thinking, verificada el 2026-09-06. La estimación se calcula únicamente tras r
 reportado; antes de una llamada su valor es `null`. `observed_charge_usd` permanece
 separado y `null` porque una respuesta de inferencia no prueba el cargo de facturación.
 
-No hubo tokens, coste estimado ni cargo observado en esta etapa porque Gemini no se
-invocó.
+La primera llamada no devolvió `usageMetadata` porque el modelo fue rechazado antes de
+generar contenido. Tokens de entrada, audio, salida y thinking son `null`; coste
+estimado y cargo observado también son `null`. La pista de audio se incluye en el
+análisis multimodal, pero el cálculo implementado la separa a USD 1.00/M tokens y no la
+contabiliza como video.
 
 ## Qué falta probar
 
-- Asegurar que la instancia reiniciada de ComfyUI herede la `GEMINI_API_KEY` detectada;
-  si usa otro lanzador, configurarla allí de forma privada.
-- Reiniciar la instancia habitual para cargar las nuevas clases.
-- Ejecutar una llamada Gemini confirmada sobre Dior, inspeccionar el JSON real, tokens,
-  tiempos y versión de modelo reportada, y revisar manualmente las tres propuestas.
+- Seleccionar y autorizar expresamente otro modelo Flash disponible para esta cuenta.
+  La respuesta del proveedor recomendó `gemini-3.6-flash`; antes de adoptarlo deben
+  verificarse documentación, soporte de video/imagen/audio, structured output, thinking,
+  límites y tarifas. No se hará sustitución silenciosa.
+- Ejecutar después una nueva llamada confirmada, inspeccionar el JSON real, tokens,
+  tiempos y versión de modelo reportada, y revisar manualmente las propuestas.
 - Aprobar un frame y comprobar el ciclo completo Gemini → planificador → Nano Banana Pro
   sin enviar todavía, seguido más tarde por una generación autorizada explícitamente.
 - La calidad semántica, los prompts reales y el coste real no se afirman como probados.
 - Ningún envío o consulta Higgsfield se probó en esta etapa; sus registros históricos se
   conservaron sin tocarlos.
 
-## Primer análisis real, cuando se autorice
+## Siguiente análisis real, cuando se autorice otro modelo
 
 1. Verificar `google-genai==2.22.0` en `venv_comfy` y definir `GEMINI_API_KEY` sólo en
    la terminal privada que iniciará ComfyUI.
 2. Reiniciar ComfyUI y abrir el workflow instalado de Ads Art.
-3. Verificar en **Gemini Commercial Analysis**: Dior, Madame X conectada,
-   `gemini-2.5-flash`, `faithful_reference`, máximo `3`, reutilización activa y reintento
-   incierto desactivado.
+3. Verificar en **Gemini Commercial Analysis**: Dior, Madame X conectada, el nuevo
+   identificador exacto previamente documentado y autorizado, `faithful_reference`,
+   máximo `3`, reutilización activa y reintento incierto desactivado.
 4. Ejecutar una vez con `confirm_gemini_analysis=false` para revisar el preflight local.
 5. Cambiar únicamente `confirm_gemini_analysis=true` y ejecutar el nodo una vez.
 6. Devolver inmediatamente la confirmación a `false`. Si el estado queda incierto, no
