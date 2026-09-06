@@ -157,3 +157,46 @@ that every documented `$defs`/`$ref` combination is rejected generally.
 The persisted creative brief used by this diagnostic still specified 4–7 shots, so the
 result contains four shots. No second provider call was made to change that independent
 brief setting.
+
+## Provider schema 1.4.0: exact facets and durable HTTP 200 responses
+
+A later HTTP 200 exposed a mismatch in schema 1.3.0: the provider accepted any number of
+generic `{key, values}` facets, while the deterministic expander required every master
+facet exactly once. One shot omitted `composition`; expansion therefore failed locally
+after the paid inference had completed.
+
+Schema 1.4.0 keeps the same 46 property declarations and reference-free shape. Each
+section now supplies its own allowed-key enum and exact `minItems`/`maxItems` count. Prompt
+`ads_art_reference_intelligence_v9_exact_facets` derives and lists required keys directly
+from `_SECTION_FIELDS`, `_SHOT_SCALAR_FIELDS` and `_SHOT_LIST_FIELDS`. Duplicate, missing
+and unknown facets remain hard local errors; the expander never synthesizes content.
+
+| Metric | 1.3.0 | 1.4.0 |
+|---|---:|---:|
+| serialized bytes | 3,820 | 5,707 |
+| property declarations | 46 | 46 |
+| constraint declarations | 20 | 38 |
+| schema objects | 83 | 83 |
+| maximum structural depth | 10 | 10 |
+
+The added bytes are enums and exact cardinalities, not a return to the 104-property
+master schema.
+
+Provider-request and local-materialization fingerprints are now separate. A successful
+provider JSON is atomically stored under
+`analysis/creative_intelligence/provider_responses/<provider_request_fingerprint>.json`
+before expansion, validation or evidence extraction. Changing only the expander/master
+validation reprocesses that record locally; changing provider schema, prompt, model or
+request inputs prevents incompatible reuse.
+
+The state machine distinguishes `provider_response_received`, `expansion_failed`,
+`master_validation_failed`, `materialization_failed` and `completed`, with separate
+counters for generate attempts/successes, received responses and both local failure
+classes.
+
+The raw JSON from the real `composition` failure was recovered from its legacy
+`failed_provider` record and archived in the new store. Its usage, cost, response ID and
+detailed timings were never persisted by the old code and remain explicitly unavailable.
+Because it lacks mandatory semantic content and belongs to provider schema 1.3.0, it
+cannot produce a completed 1.4.0 master without inventing content and cannot trigger an
+automatic paid retry.

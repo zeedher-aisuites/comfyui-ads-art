@@ -33,6 +33,8 @@ from .ads_art_creative import (
     build_creative_intelligence_prompt,
     creative_intelligence_schema,
     creative_intelligence_provider_schema,
+    creative_materialization_signature,
+    creative_provider_request_signature,
     creative_signature,
     expand_provider_creative_intelligence,
     validate_creative_brief,
@@ -259,6 +261,17 @@ class AdsArtGeminiCreativeIntelligence:
         system_instruction, prompt = build_creative_intelligence_prompt(
             brief_for_prompt, knowledge, local_observation, True
         )
+        provider_signature = creative_provider_request_signature(
+            video_sha256=sha256_file(source),
+            video_bytes=source.stat().st_size,
+            identity_sha256=sha256_file(identity_path),
+            brief=brief_for_prompt,
+            knowledge_sha256=stable_fingerprint(knowledge),
+            local_detector=local_observation["detector"],
+        )
+        provider_request_fingerprint = stable_fingerprint(provider_signature)
+        materialization_signature = creative_materialization_signature(provider_request_fingerprint)
+        cache_key = stable_fingerprint(materialization_signature)
         signature = creative_signature(
             video_sha256=sha256_file(source),
             video_bytes=source.stat().st_size,
@@ -267,20 +280,38 @@ class AdsArtGeminiCreativeIntelligence:
             knowledge_sha256=stable_fingerprint(knowledge),
             local_detector=local_observation["detector"],
         )
-        cache_key = stable_fingerprint(signature)
         cache_relative = f"analysis/creative_intelligence/cache/{cache_key}.json"
         state_relative = f"analysis/creative_intelligence/state/{cache_key}.json"
+        provider_relative = (
+            f"analysis/creative_intelligence/provider_responses/{provider_request_fingerprint}.json"
+        )
         cached = store.read_json(cache_relative) if bool(reuse_matching_analysis) else None
         if cached and cached.get("status") == "completed":
             cached["cache_reused_at"] = utc_now()
             return self._result(cached, cache_status="CACHE HIT")
-        if not gemini_credentials_configured():
+        provider_record = store.read_json(provider_relative) if bool(reuse_matching_analysis) else None
+        if provider_record and (
+            provider_record.get("provider_schema_version") != CREATIVE_PROVIDER_SCHEMA_VERSION
+            or provider_record.get("prompt_version") != CREATIVE_PROMPT_VERSION
+            or provider_record.get("model") != GEMINI_MODEL_ID
+            or provider_record.get("provider_request_fingerprint") != provider_request_fingerprint
+        ):
+            provider_record = None
+        if not provider_record and not gemini_credentials_configured():
             raise AdsArtError(
-                "Falta GEMINI_API_KEY para el análisis creativo automático y no existe una caché válida. "
+                "Falta GEMINI_API_KEY y no existe una respuesta provider compatible para reprocesar. "
                 "Defínala sólo en el entorno privado que inicia ComfyUI. No se subió ningún medio."
             )
         marker = store.read_json(state_relative)
-        if marker and marker.get("status") in {"analysis_started", "analysis_unknown", "analysis_failed"} and not bool(allow_retry_after_unknown):
+        if (
+            not provider_record
+            and marker
+            and marker.get("status") in {
+                "analysis_started", "analysis_unknown", "analysis_failed",
+                "expansion_failed", "master_validation_failed", "materialization_failed",
+            }
+            and not bool(allow_retry_after_unknown)
+        ):
             raise AdsArtError(
                 "Existe un análisis creativo iniciado, fallido o incierto para esta huella. "
                 "No se repetirá automáticamente; revise el estado antes de habilitar el override manual."
@@ -301,7 +332,10 @@ class AdsArtGeminiCreativeIntelligence:
             ),
             "status": "analysis_started",
             "cache_key": cache_key,
+            "provider_request_fingerprint": provider_request_fingerprint,
             "signature": signature,
+            "provider_signature": provider_signature,
+            "materialization_signature": materialization_signature,
             "model": GEMINI_MODEL_ID,
             "started_at": utc_now(),
             "attempt_counters": {
@@ -309,6 +343,10 @@ class AdsArtGeminiCreativeIntelligence:
                 "model_preflight_attempts": int(((marker or {}).get("attempt_counters") or {}).get("model_preflight_attempts", 0)),
                 "upload_attempts": int(((marker or {}).get("attempt_counters") or {}).get("upload_attempts", 0)),
                 "generate_content_attempts": int(((marker or {}).get("attempt_counters") or {}).get("generate_content_attempts", 0)),
+                "generate_content_successes": int(((marker or {}).get("attempt_counters") or {}).get("generate_content_successes", 0)),
+                "provider_responses_received": int(((marker or {}).get("attempt_counters") or {}).get("provider_responses_received", 0)),
+                "expansion_failures": int(((marker or {}).get("attempt_counters") or {}).get("expansion_failures", 0)),
+                "master_validation_failures": int(((marker or {}).get("attempt_counters") or {}).get("master_validation_failures", 0)),
             },
             "legacy_inference_attempts": (marker or {}).get("inference_attempts"),
             "automatic_retry": False,
@@ -316,8 +354,23 @@ class AdsArtGeminiCreativeIntelligence:
         }
         store.write_json(state_relative, started)
         provider_response = None
-        try:
-            call_result = call_gemini_analysis(
+        call_result = None
+        if provider_record:
+            provider_response = provider_record.get("provider_raw_json")
+            call_result = {
+                "response": provider_response,
+                "usage": provider_record.get("usage", {}),
+                "cost_estimate": provider_record.get("cost_estimate", {}),
+                "timings": provider_record.get("timings", {}),
+                "provider": provider_record.get("provider", {}),
+            }
+            started["status"] = "provider_response_received"
+            started["provider_response_reused"] = True
+            started["provider_response_path"] = str(store.path(provider_relative))
+            store.write_json(state_relative, started)
+        if call_result is None:
+            try:
+                call_result = call_gemini_analysis(
                 video_path=source,
                 approved_identity_path=identity_path,
                 system_instruction=system_instruction,
@@ -332,18 +385,100 @@ class AdsArtGeminiCreativeIntelligence:
                 upload_retries=1,
                 file_poll_attempts=int(file_poll_attempts),
             )
-            for key in ("model_preflight_attempts", "upload_attempts", "generate_content_attempts"):
-                started["attempt_counters"][key] += int(
-                    (call_result.get("provider", {}).get("attempt_counters", {}) or {}).get(key, 0) or 0
-                )
-            provider_response = call_result["response"]
+                for key in ("model_preflight_attempts", "upload_attempts", "generate_content_attempts"):
+                    started["attempt_counters"][key] += int(
+                        (call_result.get("provider", {}).get("attempt_counters", {}) or {}).get(key, 0) or 0
+                    )
+                provider_response = call_result["response"]
+                started["attempt_counters"]["generate_content_successes"] += 1
+                started["attempt_counters"]["provider_responses_received"] += 1
+                provider_record = {
+                "status": "provider_response_received",
+                "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
+                "prompt_version": CREATIVE_PROMPT_VERSION,
+                "expander_version_at_receipt": CREATIVE_EXPANDER_VERSION,
+                "provider_request_fingerprint": provider_request_fingerprint,
+                "cache_key_at_receipt": cache_key,
+                "model": GEMINI_MODEL_ID,
+                "response_id": (call_result.get("provider") or {}).get("response_id"),
+                "provider_raw_json": provider_response,
+                "usage": call_result.get("usage", {}),
+                "timings": call_result.get("timings", {}),
+                "cost_estimate": call_result.get("cost_estimate", {}),
+                "provider": call_result.get("provider", {}),
+                "received_at": utc_now(),
+                }
+                provider_path = store.write_json(provider_relative, provider_record)
+                started.update({
+                    "status": "provider_response_received",
+                    "provider_response_reused": False,
+                    "provider_response_path": str(provider_path),
+                })
+                store.write_json(state_relative, started)
+            except Exception as exc:
+                remote_attempts = getattr(exc, "attempt_counters", {}) or {}
+                for key in ("model_preflight_attempts", "upload_attempts", "generate_content_attempts"):
+                    started["attempt_counters"][key] += int(remote_attempts.get(key, 0) or 0)
+                started.update({
+                "status": getattr(exc, "outcome_status", "analysis_failed"),
+                "failed_at": utc_now(),
+                "failure_stage": getattr(exc, "stage", "provider_call"),
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "automatic_retry_performed": False,
+                })
+                if getattr(exc, "provider_response_text", None):
+                    failed_response_path = store.write_json(
+                    f"analysis/creative_intelligence/failed_provider/{cache_key}.json",
+                    {
+                        "status": "provider_response_not_parseable",
+                        "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
+                        "expander_version": CREATIVE_EXPANDER_VERSION,
+                        "finish_reason": getattr(exc, "provider_finish_reason", None),
+                        "usage": getattr(exc, "provider_usage", {}),
+                        "raw_response_text": getattr(exc, "provider_response_text", ""),
+                    },
+                    )
+                    started["failed_provider_response_path"] = str(failed_response_path)
+                store.write_json(state_relative, started)
+                raise
+        try:
+            expanded_response = expand_provider_creative_intelligence(provider_response)
+        except Exception as exc:
+            started["attempt_counters"]["expansion_failures"] += 1
+            started.update({
+                "status": "expansion_failed",
+                "failed_at": utc_now(),
+                "failure_stage": "expansion",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "paid_inference_occurred": not bool(started.get("provider_response_reused")),
+                "automatic_retry_performed": False,
+            })
+            store.write_json(state_relative, started)
+            raise
+        try:
             response = validate_creative_intelligence(
-                expand_provider_creative_intelligence(provider_response),
+                expanded_response,
                 duration_seconds=duration,
                 target_duration_seconds=brief["target_duration_seconds"],
                 min_shots=brief["min_original_shots"],
                 max_shots=brief["max_original_shots"],
             )
+        except Exception as exc:
+            started["attempt_counters"]["master_validation_failures"] += 1
+            started.update({
+                "status": "master_validation_failed",
+                "failed_at": utc_now(),
+                "failure_stage": "master_validation",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "paid_inference_occurred": not bool(started.get("provider_response_reused")),
+                "automatic_retry_performed": False,
+            })
+            store.write_json(state_relative, started)
+            raise
+        try:
             extraction_started = time.monotonic()
             evidence_dir = store.directory("frames", "reference_evidence", cache_key)
             for item in response["evidence"]:
@@ -393,7 +528,12 @@ class AdsArtGeminiCreativeIntelligence:
                         )
                     ),
                     "cache_key": cache_key,
-                    "cache_status": "REMOTE ANALYSIS",
+                    "provider_request_fingerprint": provider_request_fingerprint,
+                    "cache_status": (
+                        "PROVIDER RESPONSE REUSED"
+                        if started.get("provider_response_reused")
+                        else "REMOTE ANALYSIS"
+                    ),
                     "signature": signature,
                     "provider": call_result["provider"],
                     "provider_response": provider_response,
@@ -417,45 +557,16 @@ class AdsArtGeminiCreativeIntelligence:
                 },
             }
         except Exception as exc:
-            remote_attempts = getattr(exc, "attempt_counters", {}) or {}
-            for key in ("model_preflight_attempts", "upload_attempts", "generate_content_attempts"):
-                started["attempt_counters"][key] += int(remote_attempts.get(key, 0) or 0)
             started.update(
                 {
-                    "status": getattr(exc, "outcome_status", "analysis_failed"),
+                    "status": "materialization_failed",
                     "failed_at": utc_now(),
-                    "failure_stage": getattr(exc, "stage", "validation_or_materialization"),
+                    "failure_stage": "evidence_materialization",
                     "error_type": type(exc).__name__,
                     "error": str(exc),
                     "automatic_retry_performed": False,
                 }
             )
-            if provider_response is not None:
-                failed_response_path = store.write_json(
-                    f"analysis/creative_intelligence/failed_provider/{cache_key}.json",
-                    {
-                        "status": "provider_response_rejected_locally",
-                        "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
-                        "expander_version": CREATIVE_EXPANDER_VERSION,
-                        "provider_response": provider_response,
-                    },
-                )
-                started["failed_provider_response_path"] = str(failed_response_path)
-            elif getattr(exc, "provider_response_text", None):
-                failed_response_path = store.write_json(
-                    f"analysis/creative_intelligence/failed_provider/{cache_key}.json",
-                    {
-                        "status": "provider_response_not_parseable",
-                        "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
-                        "expander_version": CREATIVE_EXPANDER_VERSION,
-                        "finish_reason": getattr(exc, "provider_finish_reason", None),
-                        "usage": getattr(exc, "provider_usage", {}),
-                        "raw_response_text": getattr(exc, "provider_response_text", ""),
-                    },
-                )
-                started["failed_provider_response_path"] = str(failed_response_path)
-                started["provider_finish_reason"] = getattr(exc, "provider_finish_reason", None)
-                started["provider_usage"] = getattr(exc, "provider_usage", {})
             store.write_json(state_relative, started)
             raise
         cache_path = store.write_json(cache_relative, master)
@@ -475,7 +586,10 @@ class AdsArtGeminiCreativeIntelligence:
             "shots": master["original_shot_plan"],
         })
         store.write_json(state_relative, {**started, "status": "completed", "completed_at": utc_now(), "cache_path": str(cache_path)})
-        return self._result(master, cache_status="REMOTE ANALYSIS")
+        return self._result(
+            master,
+            cache_status=("PROVIDER RESPONSE REUSED" if started.get("provider_response_reused") else "REMOTE ANALYSIS"),
+        )
 
     def _result(self, master: dict[str, Any], *, cache_status: str):
         interpretation = master["reference_interpretation"]

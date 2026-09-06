@@ -268,8 +268,37 @@ class CreativeIntelligenceTests(unittest.TestCase):
         self.assertEqual(v1["property_declarations"], 30)
         self.assertEqual(master["property_declarations"], 104)
         self.assertLess(provider["property_declarations"], master["property_declarations"] // 2)
-        self.assertLess(provider["serialized_bytes"], master["serialized_bytes"] * 0.55)
-        self.assertLess(provider["constraint_declarations"], master["constraint_declarations"] // 2)
+        self.assertLess(provider["serialized_bytes"], master["serialized_bytes"] * 0.75)
+        self.assertLess(provider["constraint_declarations"], master["constraint_declarations"])
+
+    def test_provider_facet_contract_has_section_enums_and_exact_counts(self):
+        schema = CREATIVE.creative_intelligence_provider_schema(4, 7)
+        for name, fields in CREATIVE._SECTION_FIELDS.items():
+            facets = schema["properties"][name]["properties"]["facets"]
+            expected = list(fields["scalar"] + fields["list"])
+            self.assertEqual(facets["items"]["properties"]["key"]["enum"], expected)
+            self.assertEqual(facets["minItems"], len(expected))
+            self.assertEqual(facets["maxItems"], len(expected))
+        shot_facets = schema["properties"]["original_shot_plan"]["items"]["properties"]["facets"]
+        expected_shot = list(CREATIVE._SHOT_SCALAR_FIELDS + CREATIVE._SHOT_LIST_FIELDS)
+        self.assertEqual(shot_facets["items"]["properties"]["key"]["enum"], expected_shot)
+        self.assertEqual(shot_facets["minItems"], len(expected_shot))
+        self.assertEqual(shot_facets["maxItems"], len(expected_shot))
+
+    def test_prompt_programmatically_lists_every_required_facet(self):
+        _, prompt = CREATIVE.build_creative_intelligence_prompt(
+            fixture_brief(), {"concepts": []}, {"duration_seconds": 2}, True
+        )
+        contract = json.loads(prompt)["compact_provider_contract"]
+        self.assertEqual(
+            contract["required_shot_facet_keys"],
+            list(CREATIVE._SHOT_SCALAR_FIELDS + CREATIVE._SHOT_LIST_FIELDS),
+        )
+        for name, fields in CREATIVE._SECTION_FIELDS.items():
+            self.assertEqual(
+                contract["required_section_facet_keys"][name],
+                list(fields["scalar"] + fields["list"]),
+            )
 
     def test_provider_expansion_is_deterministic_and_master_valid(self):
         provider = fixture_provider_response()
@@ -289,6 +318,27 @@ class CreativeIntelligenceTests(unittest.TestCase):
             CREATIVE.expand_provider_creative_intelligence(missing)
         unknown = fixture_provider_response()
         unknown["reference_strategy"]["facets"][0]["key"] = "invented_strategy"
+        with self.assertRaisesRegex(CORE.AdsArtError, "faceta desconocida"):
+            CREATIVE.expand_provider_creative_intelligence(unknown)
+
+    def test_missing_duplicate_and_unknown_shot_composition_fail(self):
+        missing = fixture_provider_response()
+        missing["original_shot_plan"][2 - 1]["facets"] = [
+            facet for facet in missing["original_shot_plan"][1]["facets"]
+            if facet["key"] != "composition"
+        ]
+        with self.assertRaisesRegex(CORE.AdsArtError, "faltan facetas obligatorias: composition"):
+            CREATIVE.expand_provider_creative_intelligence(missing)
+        duplicate = fixture_provider_response()
+        composition = next(
+            facet for facet in duplicate["original_shot_plan"][0]["facets"]
+            if facet["key"] == "composition"
+        )
+        duplicate["original_shot_plan"][0]["facets"].append(copy.deepcopy(composition))
+        with self.assertRaisesRegex(CORE.AdsArtError, "faceta duplicada 'composition'"):
+            CREATIVE.expand_provider_creative_intelligence(duplicate)
+        unknown = fixture_provider_response()
+        unknown["original_shot_plan"][0]["facets"][0]["key"] = "invented_shot_facet"
         with self.assertRaisesRegex(CORE.AdsArtError, "faceta desconocida"):
             CREATIVE.expand_provider_creative_intelligence(unknown)
 
@@ -521,8 +571,85 @@ class CreativeIntelligenceTests(unittest.TestCase):
         )
         self.assertEqual(len(state_files), 1)
         state = json.loads(state_files[0].read_text(encoding="utf-8"))
-        self.assertEqual(state["status"], "analysis_failed")
+        self.assertEqual(state["status"], "expansion_failed")
         self.assertEqual(state["attempt_counters"]["generate_content_attempts"], 1)
+        self.assertEqual(state["attempt_counters"]["generate_content_successes"], 1)
+        self.assertEqual(state["attempt_counters"]["provider_responses_received"], 1)
+        self.assertEqual(state["attempt_counters"]["expansion_failures"], 1)
+        raw_files = list(
+            (Path(self.temp.name) / "ads_art" / "projects" / "creative_test" / "analysis" / "creative_intelligence" / "provider_responses").glob("*.json")
+        )
+        self.assertEqual(len(raw_files), 1)
+        raw = json.loads(raw_files[0].read_text(encoding="utf-8"))
+        self.assertEqual(raw["status"], "provider_response_received")
+        self.assertEqual(raw["provider_raw_json"], invalid)
+        self.assertNotIn("api_key", json.dumps(raw).lower())
+
+    def test_expander_change_reuses_raw_provider_response_without_gemini(self):
+        import torch
+
+        video = self.make_video()
+        call_result = {
+            "response": fixture_provider_response(), "usage": {}, "cost_estimate": {}, "timings": {},
+            "provider": {"response_id": "response-1", "attempt_counters": {
+                "model_preflight_attempts": 1, "upload_attempts": 1, "generate_content_attempts": 1,
+            }},
+        }
+        args = (
+            json.dumps(fixture_brief()), str(video), "gemini-3.6-flash", "faithful_principles",
+            0.1, 0.2, 10.0, True, True, False, 1, 10, torch.zeros((1, 64, 64, 3)),
+        )
+        node = NODES.AdsArtGeminiCreativeIntelligence()
+        with mock.patch.object(NODES, "gemini_credentials_configured", return_value=True), mock.patch.object(
+            NODES, "call_gemini_analysis", return_value=call_result
+        ) as provider:
+            node.analyze(*args)
+        with mock.patch.object(CREATIVE, "CREATIVE_EXPANDER_VERSION", "1.4.1"), mock.patch.object(
+            NODES, "CREATIVE_EXPANDER_VERSION", "1.4.1"
+        ), mock.patch.object(NODES, "gemini_credentials_configured", return_value=False), mock.patch.object(
+            NODES, "call_gemini_analysis", side_effect=AssertionError("Gemini must not run")
+        ) as provider_again, mock.patch.object(CORE, "submit_request", side_effect=AssertionError("Higgsfield must not run")):
+            result = node.analyze(*args)
+        provider_again.assert_not_called()
+        self.assertIn("PROVIDER RESPONSE REUSED", result["ui"]["text"][0])
+        self.assertEqual(json.loads(result["result"][0])["status"], "completed")
+
+    def test_master_validation_failure_has_distinct_state(self):
+        import torch
+
+        video = self.make_video()
+        invalid = fixture_provider_response()
+        invalid["evidence"][0]["timestamp_seconds"] = 99.0
+        call_result = {
+            "response": invalid, "usage": {}, "cost_estimate": {}, "timings": {},
+            "provider": {"attempt_counters": {
+                "model_preflight_attempts": 1, "upload_attempts": 1,
+                "generate_content_attempts": 1,
+            }},
+        }
+        args = (
+            json.dumps(fixture_brief()), str(video), "gemini-3.6-flash", "faithful_principles",
+            0.1, 0.2, 10.0, True, True, False, 1, 10,
+            torch.zeros((1, 64, 64, 3)),
+        )
+        with mock.patch.object(NODES, "gemini_credentials_configured", return_value=True), mock.patch.object(
+            NODES, "call_gemini_analysis", return_value=call_result
+        ):
+            with self.assertRaisesRegex(CORE.AdsArtError, "fuera del video"):
+                NODES.AdsArtGeminiCreativeIntelligence().analyze(*args)
+        state_file = next(
+            (Path(self.temp.name) / "ads_art" / "projects" / "creative_test" / "analysis" / "creative_intelligence" / "state").glob("*.json")
+        )
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["status"], "master_validation_failed")
+        self.assertEqual(state["attempt_counters"]["master_validation_failures"], 1)
+
+    def test_provider_schema_change_does_not_reuse_raw_response(self):
+        base = dict(video_sha256="a", video_bytes=1, identity_sha256="i", brief=fixture_brief(), knowledge_sha256="k", local_detector={"cuts": [0]})
+        old = GEMINI.stable_fingerprint(CREATIVE.creative_provider_request_signature(**base))
+        with mock.patch.object(CREATIVE, "CREATIVE_PROVIDER_SCHEMA_VERSION", "9.9.9"):
+            changed = GEMINI.stable_fingerprint(CREATIVE.creative_provider_request_signature(**base))
+        self.assertNotEqual(old, changed)
 
     def test_original_keyframe_request_never_attaches_reference_evidence(self):
         import torch

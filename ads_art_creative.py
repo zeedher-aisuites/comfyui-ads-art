@@ -15,10 +15,10 @@ from .ads_art_core import AdsArtError, json_dumps
 from .ads_art_gemini import GEMINI_GENERATION_CONFIG, GEMINI_MODEL_ID
 
 
-CREATIVE_PROMPT_VERSION = "ads_art_reference_intelligence_v8_bounded_output"
+CREATIVE_PROMPT_VERSION = "ads_art_reference_intelligence_v9_exact_facets"
 CREATIVE_SCHEMA_VERSION = "2.0.0"
-CREATIVE_PROVIDER_SCHEMA_VERSION = "1.3.0"
-CREATIVE_EXPANDER_VERSION = "1.3.0"
+CREATIVE_PROVIDER_SCHEMA_VERSION = "1.4.0"
+CREATIVE_EXPANDER_VERSION = "1.4.0"
 CREATIVE_PROVIDER_MAX_OUTPUT_TOKENS = 16384
 EVIDENCE_SUPPORTS = {
     "opening_hook",
@@ -336,8 +336,17 @@ def creative_intelligence_provider_schema(min_shots: int, max_shots: int) -> dic
     # documents $defs/$ref, gemini-3.6-flash + generateContent rejected the 1.0.0
     # compact contract that used them. Every value is an array; scalar facets must
     # contain exactly one value and are enforced by the deterministic expander.
-    facet = _object({"key": {"type": "string"}, "values": _strings()})
-    facet_section = _object({"facets": {"type": "array", "items": facet}})
+    def facet_collection(scalar: tuple[str, ...], list: tuple[str, ...]) -> dict[str, Any]:
+        keys = [*scalar, *list]
+        facet = _object({"key": {"type": "string", "enum": keys}, "values": _strings()})
+        return _object({
+            "facets": {
+                "type": "array",
+                "items": facet,
+                "minItems": len(keys),
+                "maxItems": len(keys),
+            }
+        })
     evidence = _object(
         {
             "evidence_id": {"type": "string"},
@@ -360,7 +369,9 @@ def creative_intelligence_provider_schema(min_shots: int, max_shots: int) -> dic
         {
             "shot_id": {"type": "string"},
             "planned_duration_seconds": {"type": "number"},
-            "facets": {"type": "array", "items": copy.deepcopy(facet)},
+            "facets": facet_collection(
+                scalar=_SHOT_SCALAR_FIELDS, list=_SHOT_LIST_FIELDS
+            )["properties"]["facets"],
             "seedance_direction": _object(
                 {
                     "performance": {"type": "string"},
@@ -384,12 +395,12 @@ def creative_intelligence_provider_schema(min_shots: int, max_shots: int) -> dic
         "type": "object",
         "additionalProperties": False,
         "properties": {
-            "reference_observation": copy.deepcopy(facet_section),
-            "reference_interpretation": copy.deepcopy(facet_section),
-            "reference_strategy": copy.deepcopy(facet_section),
+            "reference_observation": facet_collection(**_SECTION_FIELDS["reference_observation"]),
+            "reference_interpretation": facet_collection(**_SECTION_FIELDS["reference_interpretation"]),
+            "reference_strategy": facet_collection(**_SECTION_FIELDS["reference_strategy"]),
             "evidence": {"type": "array", "items": evidence},
-            "transfer_rules": copy.deepcopy(facet_section),
-            "original_adaptation": copy.deepcopy(facet_section),
+            "transfer_rules": facet_collection(**_SECTION_FIELDS["transfer_rules"]),
+            "original_adaptation": facet_collection(**_SECTION_FIELDS["original_adaptation"]),
             "original_shot_plan": {
                 "type": "array", "items": shot,
                 "minItems": int(min_shots), "maxItems": int(max_shots),
@@ -631,6 +642,15 @@ def build_creative_intelligence_prompt(
             "section_fields": _SECTION_FIELDS,
             "original_shot_scalar_fields": _SHOT_SCALAR_FIELDS,
             "original_shot_list_fields": _SHOT_LIST_FIELDS,
+            "required_section_facet_keys": {
+                name: list(fields["scalar"] + fields["list"])
+                for name, fields in _SECTION_FIELDS.items()
+            },
+            "required_shot_facet_keys": list(_SHOT_SCALAR_FIELDS + _SHOT_LIST_FIELDS),
+            "exact_facet_rule": (
+                "For every compact section and every shot, return exactly one facet entry for "
+                "each programmatically listed required key. Do not omit, duplicate or add keys."
+            ),
             "seedance_fields": _SEEDANCE_FIELDS,
             "evidence_kind_values": ["visual", "editing", "audio", "product_brand", "mixed"],
             "evidence_support_values": sorted(EVIDENCE_SUPPORTS),
@@ -811,7 +831,7 @@ def validate_creative_intelligence(
     return response
 
 
-def creative_signature(
+def creative_provider_request_signature(
     *,
     video_sha256: str,
     video_bytes: int,
@@ -820,7 +840,7 @@ def creative_signature(
     knowledge_sha256: str,
     local_detector: dict[str, Any],
 ) -> dict[str, Any]:
-    """All semantically relevant fields are included, including identity_notes."""
+    """Fingerprint only inputs that can change the paid provider request."""
 
     return {
         "product_paradigm": "reference_driven_advertising_intelligence_original_generation",
@@ -832,9 +852,28 @@ def creative_signature(
         "model": GEMINI_MODEL_ID,
         "generation_config": GEMINI_GENERATION_CONFIG,
         "prompt_version": CREATIVE_PROMPT_VERSION,
-        "schema_version": CREATIVE_SCHEMA_VERSION,
         "provider_schema_version": CREATIVE_PROVIDER_SCHEMA_VERSION,
-        "expander_version": CREATIVE_EXPANDER_VERSION,
         "max_output_tokens": CREATIVE_PROVIDER_MAX_OUTPUT_TOKENS,
         "local_detector": local_detector,
+    }
+
+
+def creative_materialization_signature(provider_request_fingerprint: str) -> dict[str, Any]:
+    """Fingerprint local expansion/validation independently from the paid request."""
+
+    return {
+        "provider_request_fingerprint": provider_request_fingerprint,
+        "schema_version": CREATIVE_SCHEMA_VERSION,
+        "expander_version": CREATIVE_EXPANDER_VERSION,
+    }
+
+
+def creative_signature(**kwargs: Any) -> dict[str, Any]:
+    """Backward-compatible full signature used by older callers and records."""
+
+    provider = creative_provider_request_signature(**kwargs)
+    return {
+        **provider,
+        "schema_version": CREATIVE_SCHEMA_VERSION,
+        "expander_version": CREATIVE_EXPANDER_VERSION,
     }

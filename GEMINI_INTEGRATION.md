@@ -170,3 +170,12 @@ cargo de facturación.
 
 La implementación v2 se verificó con mocks/fixtures. No se realizó otra llamada remota
 a Gemini y no se ejecutó ninguna operación Higgsfield durante esta migración.
+
+## Provider-response cache
+
+Desde provider schema `1.4.0`, cada JSON recibido tras un `generateContent` satisfactorio
+se escribe primero en `analysis/creative_intelligence/provider_responses/`. Sólo después
+se ejecutan expansión, validación master y extracción de evidencia. El fingerprint de
+esa respuesta excluye la versión del expander, permitiendo corregir y reprocesar lógica
+local sin otra inferencia, pero incluye modelo, prompt, provider schema y los inputs del
+request para impedir reutilización incompatible.
